@@ -86,12 +86,14 @@ def vqe_ising_chain_circuit(param, N):
     # Apply entanglement to the neighbouring spins
     for spin in range(N-1):
         qml.CNOT(wires = [spin, spin+1])
-        
+    
+    qml.Barrier()
+    
     # Apply Y, Z, Y rotations to cover the entire bloch sphere
     for spin in range(N):
         qml.RY(param[N   + spin], wires = spin)
-        qml.RZ(param[2*N + spin], wires = spin)
-        qml.RY(param[3*N + spin], wires = spin)
+        #qml.RZ(param[2*N + spin], wires = spin)
+        #qml.RY(param[3*N + spin], wires = spin)
                   
                   
 # 8888888888        
