@@ -89,11 +89,8 @@ def vqe_ising_chain_circuit(param, N):
     
     qml.Barrier()
     
-    # Apply Y, Z, Y rotations to cover the entire bloch sphere
     for spin in range(N):
         qml.RY(param[N   + spin], wires = spin)
-        #qml.RZ(param[2*N + spin], wires = spin)
-        #qml.RY(param[3*N + spin], wires = spin)
                   
                   
 # 8888888888        
@@ -158,7 +155,7 @@ def train_vqe_ising(step_size, l_steps, epochs, N, J, dev, circuit = False, plot
         ys.append(0) if l <= J else ys.append(1)
         
     if plots:
-        fig, ax = plt.subplots(2, 1, figsize=(10,10))
+        fig, ax = plt.subplots(3, 1, figsize=(10,10))
 
         true_e = []
         for l in lams:
@@ -182,20 +179,19 @@ def train_vqe_ising(step_size, l_steps, epochs, N, J, dev, circuit = False, plot
         ax[1].grid(True)
         ax[1].axhline(y=0, color='r', linestyle='--')
         
+        true_e = np.array(true_e)
+        vqe_e = np.array(vqe_e)
+        
+        ax[2].plot(lams, np.abs((true_e-vqe_e)/true_e), lw = 2)
+        ax[2].grid(True)
+        ax[2].set_title('Accuracy of VQE'.format(N,J))
+        ax[2].set_xlabel(r'$\lambda$')
+        ax[2].set_ylabel(r'$|(E_{vqe} - E_{true})/E_{true}|$')
+        ax[2].legend()
+        
         plt.show()
         
-        plt.title('J = {0}'.format(J)) 
-
-        pm = plt.imshow(np.abs(thetas_arr))
-
-        for i in range(np.shape(thetas_arr)[1]):
-            plt.axvline(x=i - .5, color = 'black')
-
-        plt.ylabel(r'$\lambda$')
-
-        plt.colorbar(pm, shrink=0.3, aspect=20)
-        plt.tight_layout()
-        plt.show()  
+         
         
     return vqe_e, errs, thetas_arr, ys                  
                   
