@@ -15,6 +15,7 @@ import copy
 from tqdm.notebook import tqdm # Pretty progress bars
 from IPython.display import Markdown, display # Better prints
 import joblib # Writing and loading
+from noisyopt import minimizeSPSA
 
 import multiprocessing
 ##############
@@ -191,7 +192,7 @@ def train(step_size, lams, n_epochs, N, J, vqe_cost_fn, shift_invariance = 0, p_
     display(Markdown('***Parameters:***'))
     print('step_size    = {0} (Step size of the optimizer)'.format(step_size))
     print('first_epochs = {0} (# epochs for first GS)'.format(first_epochs))
-    print('n_epochs     = {0} (# epochs for the other GSs'.format(n_epochs))
+    print('n_epochs     = {0} (# epochs for the other GSs)'.format(n_epochs))
     print('N            = {0} (Number of spins of the system)'.format(N))
     
     # Array of energies for each final ground state found
@@ -323,7 +324,7 @@ def mp_train(step_size, lams, n_epochs, N, J, vqe_cost_fn, shift_invariance = 0,
     
     display(Markdown('***Parameters:***'))
     print('step_size    = {0} (Step size of the optimizer)'.format(step_size))
-    print('n_epochs     = {0} (# epochs for the other GSs'.format(n_epochs))
+    print('n_epochs     = {0} (# epochs for the other GSs)'.format(n_epochs))
     print('N            = {0} (Number of spins of the system)'.format(N))
     
     # Since we are parallelizing the VQE algorithm we cannot recycle the previous parameter for the next lambda
@@ -451,7 +452,7 @@ def mp_train(step_size, lams, n_epochs, N, J, vqe_cost_fn, shift_invariance = 0,
         # Not actually the MSE since it is computed on just the active_points
         MSE.append(np.mean(energy_err))
         
-        progress.set_description('Cost: {0}'.format(MSE[-1]) )
+        progress.set_description('Cost: {0} | Active states: {1}'.format(MSE[-1], len(active_points)) )
     
     vqe_e  = []
     for i, lam in enumerate(lams):
@@ -492,6 +493,185 @@ def mp_train(step_size, lams, n_epochs, N, J, vqe_cost_fn, shift_invariance = 0,
         
         plt.tight_layout()
     
+    ys = []
+    for l in lams:
+        ys.append(0) if l <= J else ys.append(1)
+        
+    return vqe_e, MSE, params, ys
+
+def mp_train_param_SPSA(idx, params, N, shift_invariance, vqe_cost_fn, Hs, true_e, p_noise, p_noise_ent, epochs, step_size, random_shift):
+    param = params[idx]
+    H = Hs[idx]
+    cost_fn = lambda v: vqe_cost_fn(v, N, shift_invariance, H, p_noise, p_noise_ent)
+    
+    res = minimizeSPSA(cost_fn,
+                       x0=param,
+                       niter=epochs,
+                       paired=False,
+                       c=random_shift,
+                       a=step_size)
+
+    return res.x, res.fun
+
+def mp_train_SPSA(step_size, random_shift, lams, n_epochs, N, J, vqe_cost_fn, shift_invariance = 0, p_noise = 0, p_noise_ent = 0, circuit = False, plots = False,
+                  prepare_states = False, preplots = False, prep_step_size = False, cutoff_value = 0.01):
+    
+    # define the wrapper update function to be called inside a multiprocessing map 
+    # as a global variable to avoid the pickle error with the Jupyter Kernel
+    global wrapped_update
+    
+    '''
+    step_size    = learning rate
+    random_shift = random shift of parameters for SPSA gradient evaluation
+    n_epochs     = # epochs for the other lambdas
+    lams         = Array of intensities of magnetic field
+    N            = Number of spins of the system
+    '''
+    
+    display(Markdown('***Parameters:***'))
+    print('step_size    = {0} (Step size of the optimizer)'.format(step_size))
+    print('random_shift = {0} (Random shift of parameters of the optimizer)'.format(random_shift))
+    print('n_epochs     = {0} (# epochs for the other GSs)'.format(n_epochs))
+    print('N            = {0} (Number of spins of the system)'.format(N))
+    
+    # Since we are parallelizing the VQE algorithm we cannot recycle the previous parameter for the next lambda
+    if shift_invariance == 0:
+        n_params = 5*N
+    elif shift_invariance == 1:
+        n_params = 20
+    elif shift_invariance == 2:
+        n_params = 5
+    
+    # Prepare initial parameters randomly for each datapoint/state
+    params = []
+
+    for _ in lams:
+        param = np.random.rand(n_params)
+        params.append(param)
+        
+    if circuit:
+        # Display the circuit
+        display(Markdown('***Circuit:***'))
+        drawer = qml.draw(vqe_cost_fn)
+        print(drawer([0]*n_params, N, shift_invariance, H = qml_build_H(N, 0 ,0)))
+    
+    # For each lamda create optimizer and H
+    Hs   = []
+    opts = []
+    energy_err  = [0]*(len(lams))
+    MSE = []
+    true_e = []
+    
+    for i, lam in enumerate(lams):
+        Hs.append(qml_build_H(N, float(lam), float(J) ))
+        true_e.append(np.min(qml.eigvals(Hs[i])) )
+    
+    # STATES PREPARATION:
+    # Preparing initial parameters recycling thetas
+    
+    # If pre_step_size is left as false we set it
+    # as step_size
+    if not prep_step_size:
+        prep_step_size = step_size
+        
+    if prepare_states:
+        print('\nPreparing states:')
+        
+        # We prepare the states of every 3 parameters, the others are copied from the 
+        # previous ones
+        prep_progress = tqdm(np.arange(0, len(lams), 3))
+        vqe_e  = []
+        
+        for prep_l in prep_progress:
+            if prep_l == 0:
+                prep_params = params[0]
+            else:
+                prep_params = params[prep_l - 1]
+        
+            H = qml_build_H(N, float(lams[prep_l]), J)
+            cost_fn = lambda v: vqe_cost_fn(v, N, shift_invariance, H, p_noise, p_noise_ent)
+            
+            # The first one is given more epochs being the one starting
+            # from totally random parameters
+            prep_epochs = 100 if prep_l == 0 else 50
+            
+            res = minimizeSPSA(cost_fn,
+                               x0=prep_params,
+                               niter=prep_epochs,
+                               paired=False,
+                               c=random_shift,
+                               a=prep_step_size)
+            
+            params[prep_l] = res.x
+            
+            # The following two are copied of the state just found
+            if prep_l+1 < len(lams):
+                params[prep_l+1] = res.x
+            if prep_l+2 < len(lams):
+                params[prep_l+2] = res.x
+                               
+        # The VQE performance can be plotted to see how close to the result
+        # it is before the actual training
+        if preplots:
+            fig, ax = plt.subplots(1, 1, figsize=(9,4))
+            for i, lam in enumerate(lams):
+                cost_fn = lambda v: vqe_cost_fn(v, N, shift_invariance, Hs[i], p_noise, p_noise_ent)
+                vqe_e.append(cost_fn(params[i]) )
+
+            ax.plot(lams, true_e, '--', label='True', color='red', lw = 2)
+            ax.plot(lams, vqe_e, '.', label='VQE', color='green', lw = 2)
+            ax.plot(lams, vqe_e, color='green', lw = 2, alpha=0.6)
+            ax.grid(True)
+            ax.set_title('Prepared - Ground States of Ising Hamiltonian ({0}-spins), J = {1}'.format(N,J))
+            ax.set_xlabel(r'$\lambda$')
+            ax.set_ylabel(r'$E(\lambda)$')
+            ax.legend()
+            
+            plt.show()
+        
+    def wrapped_update(idx):
+        return mp_train_param_SPSA(idx, params, N, shift_invariance, vqe_cost_fn, Hs, true_e, 
+                                   p_noise, p_noise_ent, n_epochs, step_size, random_shift)
+        
+    p = multiprocessing.Pool()
+    with p: rdata = p.map(wrapped_update, np.arange(len(lams)) )
+
+    vqe_e = []
+    MSE = 0
+    for l, lam in enumerate(lams):
+        params[l] = rdata[l][0]
+        cost = rdata[l][1]
+        MSE = MSE + (cost - true_e[l])**2
+        vqe_e.append(cost)
+            
+        MSE = MSE/len(lams)
+        
+    if plots:
+        fig, ax = plt.subplots(2, 1, figsize=(12,9.3))
+                          
+        ax[0].plot(lams, true_e, '--', label='True', color='red', lw = 2)
+        ax[0].plot(lams, vqe_e, '.', label='VQE', color='green', lw = 2)
+        ax[0].plot(lams, vqe_e, color='green', lw = 2, alpha=0.6)
+        ax[0].grid(True)
+        ax[0].set_title('Ground States of Ising Hamiltonian ({0}-spins), J = {1}'.format(N,J))
+        ax[0].set_xlabel(r'$\lambda$')
+        ax[0].set_ylabel(r'$E(\lambda)$')
+        ax[0].legend()
+        
+        true_e = np.array(true_e)
+        vqe_e = np.array(vqe_e)
+        accuracy = np.abs((true_e-vqe_e)/true_e)
+        ax[1].fill_between(lams, 0.01, max(np.max(accuracy),0.01), color = 'r', alpha = 0.3 )
+        ax[1].fill_between(lams, .01, min(np.min(accuracy),0), color = 'green', alpha = 0.3 )
+        ax[1].axhline(y=0.01, color='r', linestyle='--')
+        ax[1].scatter(lams, accuracy)
+        ax[1].grid(True)
+        ax[1].set_title('Accuracy of VQE'.format(N,J))
+        ax[1].set_xlabel(r'$\lambda$')
+        ax[1].set_ylabel(r'$|(E_{vqe} - E_{true})/E_{true}|$')
+        
+        plt.tight_layout()
+        
     ys = []
     for l in lams:
         ys.append(0) if l <= J else ys.append(1)
