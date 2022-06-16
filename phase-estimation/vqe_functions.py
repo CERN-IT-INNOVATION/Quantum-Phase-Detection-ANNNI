@@ -433,7 +433,7 @@ def mptrain(step_size, n_epochs, N, J, l_steps, vqe_cost_fn, optimizer = 'adam',
             # In the happy scenario all points have a relative error below CUTOFF
             # we can just stop the training aswell
             if len(active_points) == 0:
-                n_epochs = epoch - 1
+                n_epochs = epoch
                 break
 
             def wrapped_update(idx):

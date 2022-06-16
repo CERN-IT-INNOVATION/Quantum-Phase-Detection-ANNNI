@@ -238,20 +238,21 @@ def train(epochs, lr, r_shift, vqe_shift_invariance, N, vqe_conv_noise, vqe_rot_
         accuracy_history.append(100*corrects/len(Y)) 
         
         # Take care of the test set every 10 epochs
-        if (len(loss_history) - 1) % 10 == 0:
-            cross_entropy_test = 0
-            corrects = 0
-            for x, y in zip(X_test, Y_test):
-                prediction = qcnn_circuit(x, vqe_shift_invariance, params, N,
-                                      vqe_conv_noise, vqe_rot_noise, qcnn_conv_noise, qcnn_pool_noise)
-                
-                cross_entropy_test += y * np.log(prediction[y]) + (1 - y) * np.log(1 - prediction[1 - y])
-            
-                if np.argmax( prediction ) == y:
-                    corrects += 1   
-            
-            loss_history_test.append( - cross_entropy_test)
-            accuracy_history_test.append(100*corrects/len(Y_test)) 
+        if len(Y_test) > 0:
+            if (len(loss_history) - 1) % 10 == 0:
+                cross_entropy_test = 0
+                corrects = 0
+                for x, y in zip(X_test, Y_test):
+                    prediction = qcnn_circuit(x, vqe_shift_invariance, params, N,
+                                          vqe_conv_noise, vqe_rot_noise, qcnn_conv_noise, qcnn_pool_noise)
+
+                    cross_entropy_test += y * np.log(prediction[y]) + (1 - y) * np.log(1 - prediction[1 - y])
+
+                    if np.argmax( prediction ) == y:
+                        corrects += 1   
+
+                loss_history_test.append( - cross_entropy_test)
+                accuracy_history_test.append(100*corrects/len(Y_test)) 
         
         # Update the progress bar:
         pbar.update()
