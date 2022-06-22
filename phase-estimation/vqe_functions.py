@@ -618,3 +618,39 @@ def mptrain(step_size, n_epochs, N, J, l_steps, vqe_cost_fn, optimizer = 'adam',
 # | || |_   
 # |__   _|  
 #    |_|(_) Visualization      
+def show_train_plots(data, N, J, circuit, shift_invariance, lsteps = 100):
+    lams = np.linspace(0,2*J, lsteps)
+    
+    true_e = []
+    vqe_e = []
+    for i, l in enumerate(lams):
+        circ_params = data[i][0]
+        
+        H = qml_build_H(N, float(l), float(J))
+        true_e.append(np.min(qml.eigvals(H)))
+        vqe_e.append(circuit(circ_params, N, shift_invariance, H) )
+        
+    fig, ax = plt.subplots(2, 1, figsize=(12,14))
+                          
+    ax[0].plot(lams, true_e, '--', label='True', color='red', lw = 2)
+    ax[0].plot(lams, vqe_e, '.', label='VQE', color='green', lw = 2)
+    ax[0].plot(lams, vqe_e, color='green', lw = 2, alpha=0.6)
+    ax[0].grid(True)
+    ax[0].set_title('Ground States of Ising Hamiltonian ({0}-spins), J = {1}'.format(N,J))
+    ax[0].set_xlabel(r'$\lambda$')
+    ax[0].set_ylabel(r'$E(\lambda)$')
+    ax[0].legend()
+
+    true_e = np.array(true_e)
+    vqe_e = np.array(vqe_e)
+    accuracy = np.abs((true_e-vqe_e)/true_e)
+    ax[1].fill_between(lams, 0.01, max(np.max(accuracy),0.01), color = 'r', alpha = 0.3 )
+    ax[1].fill_between(lams, .01, min(np.min(accuracy),0), color = 'green', alpha = 0.3 )
+    ax[1].axhline(y=0.01, color='r', linestyle='--')
+    ax[1].scatter(lams, accuracy)
+    ax[1].grid(True)
+    ax[1].set_title('Accuracy of VQE'.format(N,J))
+    ax[1].set_xlabel(r'$\lambda$')
+    ax[1].set_ylabel(r'$|(E_{vqe} - E_{true})/E_{true}|$')
+
+    plt.tight_layout()

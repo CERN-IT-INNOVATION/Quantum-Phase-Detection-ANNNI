@@ -184,7 +184,7 @@ def qcnn(params_vqe, vqe_shift_invariance, params, N, vqe_conv_noise = 0, vqe_ro
 
 # Estimation functions for QCNN
 
-def compute_accuracy(data, params, shift_invariance, N):
+def compute_accuracy(data, params, shift_invariance, N, qcnn_circuit):
     '''
     Accuracy = 100 * (# Correctly classified data)/(# Data) (%)
     '''
@@ -203,16 +203,17 @@ def compute_accuracy(data, params, shift_invariance, N):
 
 # Training function
 def train(epochs, lr, r_shift, vqe_shift_invariance, N, vqe_conv_noise, vqe_rot_noise, qcnn_conv_noise, qcnn_pool_noise,
-          qcnn_circuit, X_train, Y_train, X_test = [], Y_test = [], plot = True):
+          qcnn_circuit, X_train, Y_train, X_test = [], Y_test = [], plot = True, info = True):
     
     X_train, Y_train = np.array(X_train), np.array(Y_train)
     X_test, Y_test = np.array(X_test), np.array(Y_test)    
     
-    display(Markdown('***Parameters:***'))
-    print('a factor   = {0} (\'a\' coefficient of the optimizer)'.format(lr))
-    print('r_shift    = {0} (c coefficient of the optimizer)'.format(r_shift))
-    print('epochs     = {0} (# epochs for learning)'.format(epochs))
-    print('N          = {0} (Number of spins of the system)'.format(N))
+    if info:
+        display(Markdown('***Parameters:***'))
+        print('a factor   = {0} (\'a\' coefficient of the optimizer)'.format(lr))
+        print('r_shift    = {0} (c coefficient of the optimizer)'.format(r_shift))
+        print('epochs     = {0} (# epochs for learning)'.format(epochs))
+        print('N          = {0} (Number of spins of the system)'.format(N))
     
     # Initialize parameters randomly
     params = np.array( np.random.randn(num_params_qcnn(N)) )
@@ -255,8 +256,9 @@ def train(epochs, lr, r_shift, vqe_shift_invariance, N, vqe_conv_noise, vqe_rot_
                 accuracy_history_test.append(100*corrects/len(Y_test)) 
         
         # Update the progress bar:
-        pbar.update()
-        pbar.set_description('Cost: {0} | Accuracy: {1}'.format(loss_history[-1], accuracy_history[-1])  )
+        if info:
+            pbar.update()
+            pbar.set_description('Cost: {0} | Accuracy: {1}'.format(loss_history[-1], accuracy_history[-1])  )
         
         return - cross_entropy
 
@@ -268,7 +270,10 @@ def train(epochs, lr, r_shift, vqe_shift_invariance, N, vqe_conv_noise, vqe_rot_
     accuracy_history_test = []
     
     #with tqdm(total=epochs) as pbar:
-    pbar = tqdm(total = epochs)
+    if info:
+        pbar = tqdm(total = epochs)
+    else:
+        pbar = False
     
     res = minimizeSPSA(spsa_callback,
                        x0=params,
