@@ -2,27 +2,44 @@
 # Quantum libraries:
 import pennylane as qml
 from pennylane import numpy as np
+import jax
+import jax.numpy as jnp
+from jax import jit
+from functools import partial
 
 # Plotting
 from matplotlib import pyplot as plt
+import plotly
 
 # Other
-import copy
-import tqdm # Pretty progress bars
+import time, copy, joblib
+import tqdm as tqdm # Pretty progress bars
 from IPython.display import Markdown, display # Better prints
-import joblib # Writing and loading
 from noisyopt import minimizeSPSA
+import optuna # Automatic tuning tool
 
 import multiprocessing
-##############
 
-#   _    
-#  / |   
-#  | |   
-#  | |_  
-#  |_(_) 
+import warnings
+warnings.filterwarnings("ignore", message="For Hamiltonians, the eigenvalues will be computed numerically. This may be computationally intensive for a large number of wires.Consider using a sparse representation of the Hamiltonian with qml.SparseHamiltonian.")
 
-def qml_build_H(N, lam, J, ring = True):
+
+#################################################################
+
+N = 4
+J = 1
+l_steps = 100
+shift_invariance = 0
+
+lams = np.linspace(0,2*J,l_steps)
+
+step_size = 0.02
+epochs = 2
+
+dev_vqe_default = qml.device('default.qubit', wires = N, shots = None)
+dev_vqe_mixed   = qml.device("default.mixed", wires = N, shots = None)
+
+def qml_build_H(N, lam, J):
     '''
     Set up Hamiltonian: 
             H = lam*Σsigma^i_z - J*Σsigma^i_x*sigma^{i+1}_ 
@@ -37,12 +54,31 @@ def qml_build_H(N, lam, J, ring = True):
         H = H + J*(-1)*( qml.PauliX(i) @ qml.PauliX(i+1) )
     
     # Ring
-    if ring:
-        # Create interaction between first and last qubit
-        H = H + J*(-1)*( qml.PauliX(N-1) @ qml.PauliX(0) )
+    H = H + J*(-1)*( qml.PauliX(N-1) @ qml.PauliX(0) )
     
     return H
 
+#   _    
+#  / |   
+#  | |   
+#  | |_  
+#  |_(_) 
+
+def qml_build_H(N, lam, J):
+    '''
+    Set up Hamiltonian: 
+            H = lam*Σsigma^i_z - J*Σsigma^i_x*sigma^{i+1}_ 
+    '''
+    # Interaction of spins with magnetic field
+    H = lam * qml.PauliZ(0)
+    for i in range(1,N):
+        H = H + lam * qml.PauliZ(i)
+        
+    # Interaction between spins:
+    for i in range(0,N-1):
+        H = H + J*(-1)*( qml.PauliX(i) @ qml.PauliX(i+1) )
+    
+    return H
 
 #  ____     
 # |___ \    
@@ -50,7 +86,7 @@ def qml_build_H(N, lam, J, ring = True):
 #  / __/ _  
 # |_____(_) Circuit functions
 
-def circuit_block_1(N, param, index = 0, p_noise = 0):
+def circuit_block_1(N, param, shift_invariance = 0, index = 0, p_noise = 0):
     '''
     RX + RY
     
@@ -63,16 +99,57 @@ def circuit_block_1(N, param, index = 0, p_noise = 0):
     noise = True
     if p_noise == 0: noise = False # Remove BitFlip and PhaseFlip if we are not using default.mixed
     
-    # Apply RX and RY to each wire:
-    for spin in range(N):
-        qml.RY(param[index + spin],     wires = spin)
-        if noise: qml.PhaseFlip(p_noise, wires = spin); qml.BitFlip(p_noise, wires = spin)
-        qml.RX(param[index + N + spin], wires = spin)
-        if noise: qml.PhaseFlip(p_noise, wires = spin); qml.BitFlip(p_noise, wires = spin)
-            
-    return index + 2*N
+    if shift_invariance == 0: # Independent rotations
+        # Apply RX and RY to each wire:
+        for spin in range(N):
+            qml.RY(param[index + spin],     wires = spin)
+            if noise: qml.PhaseFlip(p_noise, wires = spin); qml.BitFlip(p_noise, wires = spin)
+            qml.RX(param[index + N + spin], wires = spin)
+            if noise: qml.PhaseFlip(p_noise, wires = spin); qml.BitFlip(p_noise, wires = spin)
+        return index + 2*N
+        
+    elif shift_invariance == 1: # RX and RY rotations
+        # Apply RX + RY for first wire
+        qml.RY(param[index + 0], wires = 0)
+        if noise: qml.PhaseFlip(p_noise, wires = 0); qml.BitFlip(p_noise, wires = 0)
+        qml.RX(param[index + 1], wires = 0)
+        if noise: qml.PhaseFlip(p_noise, wires = 0); qml.BitFlip(p_noise, wires = 0)
+        
+        # Apply RX + RY for last wire
+        qml.RY(param[index + 2], wires = N - 1)
+        if noise: qml.PhaseFlip(p_noise, wires = N - 1); qml.BitFlip(p_noise, wires = N - 1)
+        qml.RX(param[index + 3], wires = N - 1)
+        if noise: qml.PhaseFlip(p_noise, wires = N - 1); qml.BitFlip(p_noise, wires = N - 1)
+
+        # Apply RX + RY for even and odd wires
+        for spin in range(1,N-1,2):
+            qml.RY(param[index + 4], wires = spin)
+            qml.RY(param[index + 5], wires = spin+1)
+            if noise: 
+                qml.PhaseFlip(p_noise, wires = spin); qml.BitFlip(p_noise, wires = spin);
+                qml.PhaseFlip(p_noise, wires = spin+1); qml.BitFlip(p_noise, wires = spin+1)
+            qml.RX(param[index + 6], wires = spin)
+            qml.RX(param[index + 7], wires = spin+1)
+            if noise: 
+                qml.PhaseFlip(p_noise, wires = spin); qml.BitFlip(p_noise, wires = spin)
+                qml.PhaseFlip(p_noise, wires = spin+1); qml.BitFlip(p_noise, wires = spin+1)
+        
+        return index + 8
     
-def circuit_block_2(N, param, index = 0, p_noise = 0):
+    elif shift_invariance == 2:
+        # Apply same RX and RY to each wire:
+        for spin in range(N):
+            qml.RY(param[index + 0], wires = spin)
+            if noise: qml.PhaseFlip(p_noise, wires = spin); qml.BitFlip(p_noise, wires = spin)
+            qml.RX(param[index + 1], wires = spin)
+            if noise: qml.PhaseFlip(p_noise, wires = spin); qml.BitFlip(p_noise, wires = spin)
+            
+        return index + 2
+    
+    else:
+        raise ValueError('Invalid shift_invariance input value')
+        
+def circuit_block_2(N, param, shift_invariance = 0, index = 0, p_noise = 0):
     '''
     RY
     
@@ -85,13 +162,39 @@ def circuit_block_2(N, param, index = 0, p_noise = 0):
     noise = True
     if p_noise == 0: noise = False # Remove BitFlip and PhaseFlip if we are not using default.mixed
     
-    # Apply RX and RY to each wire:
-    for spin in range(N):
-        #qml.RZ(param[index + N + spin],   wires = spin)
-        qml.RY(param[index + spin],   wires = spin)
-        if noise: qml.PhaseFlip(p_noise, wires = spin); qml.BitFlip(p_noise, wires = spin)
+    if shift_invariance == 0: # Independent rotations
+        # Apply RX and RY to each wire:
+        for spin in range(N):
+            #qml.RZ(param[index + N + spin],   wires = spin)
+            qml.RY(param[index + spin],   wires = spin)
+            if noise: qml.PhaseFlip(p_noise, wires = spin); qml.BitFlip(p_noise, wires = spin)
             
-    return index + N
+        return index + N
+            
+    elif shift_invariance == 1: # RX and RY rotations
+        # Apply RY for first wire
+        qml.RY(param[index + 0], wires = 0)
+        if noise: qml.PhaseFlip(p_noise, wires = 0); qml.BitFlip(p_noise, wires = 0)
+
+        # Apply RY for last wire
+        qml.RY(param[index + 1], wires = N - 1)
+        if noise: qml.PhaseFlip(p_noise, wires = N - 1); qml.BitFlip(p_noise, wires = N - 1)
+
+        # Apply RY for even and odd wires
+        for spin in range(1,N-1,2):
+            qml.RY(param[index + 2], wires = spin)
+            if noise: qml.PhaseFlip(p_noise, wires = spin); qml.BitFlip(p_noise, wires = spin)
+            qml.RY(param[index + 3], wires = spin+1)
+            if noise: qml.PhaseFlip(p_noise, wires = spin+1); qml.BitFlip(p_noise, wires = spin+1)
+        
+    elif shift_invariance == 2:
+        # Apply same RX and RY to each wire:
+        for spin in range(N):
+            qml.RY(param[index + 0], wires = spin)
+            if noise: qml.PhaseFlip(p_noise, wires = spin); qml.BitFlip(p_noise, wires = spin)
+         
+    else:
+        raise ValueError('Invalid shift_invariance input value')
 
 def circuit_entanglement(N, params, index, p_noise_ent = 0):
     # Apply entanglement to the neighbouring spins
@@ -109,32 +212,36 @@ def circuit_entanglement(N, params, index, p_noise_ent = 0):
         
     return index
 
-def vqe_circuit(N, params, p_noise = 0, p_noise_ent = 0):
-    index = circuit_block_1(N, params, p_noise = p_noise)
+def circuit(N, params, shift_invariance = 0, p_noise = 0, p_noise_ent = 0):
+    index = circuit_block_1(N, params, shift_invariance, p_noise = p_noise)
     qml.Barrier()
     index = circuit_entanglement(N, params, index, p_noise_ent)
     qml.Barrier()
-    index = circuit_block_1(N, params, index, p_noise = p_noise)
+    index = circuit_block_1(N, params, shift_invariance, index, p_noise = p_noise)
+    index = circuit_block_2(N, params, shift_invariance, index, p_noise)
     qml.Barrier()
     index = circuit_entanglement(N, params, index, p_noise_ent)
     qml.Barrier()
-    index = circuit_block_1(N, params, index, p_noise = p_noise)
-    qml.Barrier()
-    index = circuit_entanglement(N, params, index, p_noise_ent)
-    qml.Barrier()
-    index = circuit_block_1(N, params,  index, p_noise = p_noise)
-    
-    return index
+    index = circuit_block_1(N, params, shift_invariance, index, p_noise = p_noise)
+    circuit_block_2(N, params, shift_invariance, index, p_noise)
 
 
-#  _____   
-# |___ /   
-#   |_ \   
-#  ___) |  
-# |____(_) Learning functions
-    
-def train(step_size, n_epochs, N, J, l_steps, device, vqe_circuit_fun, optimizer = 'adam', random_shift = 0, p_noise = 0, p_noise_ent = 0, 
-            circuit = False, plots = False, prepare_states = False, preplots = False, prep_step_size = False, prep_epochs = 10, parameter_info = True,
+@qml.qnode(dev_vqe_mixed)
+def vqe_cost_fn_mixed(vqe_params, N, shift_invariance, H, p_noise = 0, p_noise_ent = 0):
+    circuit(N, vqe_params, shift_invariance, p_noise, p_noise_ent)
+        
+    # return <psi|H|psi>
+    return qml.expval(H)
+
+@qml.qnode(dev_vqe_mixed)
+def density_matrices(vqe_params, N, shift_invariance, p_noise = 0, p_noise_ent = 0):
+    circuit(N, vqe_params, shift_invariance, p_noise, p_noise_ent)
+        
+    # return <psi|H|psi>
+    return qml.state()
+
+def mptrain(step_size, n_epochs, N, J, l_steps, vqe_cost_fn, densmat_circ, optimizer = 'adam', random_shift = 0, shift_invariance = 0, p_noise = 0, p_noise_ent = 0, 
+            circuit = False, plots = False, prepare_states = False, preplots = False, prep_step_size = False, parameter_info = True,
             cutoff_value = 0.01, pretrained = []):
     
     lams = np.linspace(0, 2*J, l_steps)
@@ -149,43 +256,33 @@ def train(step_size, n_epochs, N, J, l_steps, device, vqe_circuit_fun, optimizer
     lams         = Array of intensities of magnetic field
     N            = Number of spins of the system
     '''
-    
     if parameter_info:
-        print('+--- PARAMETERS ---+')
+        print('PARAMETERS:')
         print('step_size    = {0} (Step size of the optimizer)'.format(step_size))
         print('random_shift = {0} (Random shift of parameters of the optimizer)'.format(random_shift))
         print('n_epochs     = {0} (# epochs for the other GSs)'.format(n_epochs))
-        print('N            = {0} (Number of spins of the system)\n'.format(N))
+        print('N            = {0} (Number of spins of the system)'.format(N))
 
-    
-    @qml.qnode(device)
-    def vqe_cost_fn(vqe_params, N, H, p_noise = 0, p_noise_ent = 0):
-        vqe_circuit_fun(N, vqe_params, p_noise, p_noise_ent)
-
-        # return <psi|H|psi>
-        return qml.expval(H)
-
-    @qml.qnode(device)
-    def density_matrices(vqe_params, N, p_noise = 0, p_noise_ent = 0):
-        vqe_circuit_fun(N, vqe_params, p_noise, p_noise_ent)
-        
-        # return |psi><psi|
-        return qml.state()
-    
-    # circuit functions returns the number of parameters needed for the circuit itself
-    n_params = vqe_circuit_fun(N, [0]*1000)
+    # Since we are parallelizing the VQE algorithm we cannot recycle the previous parameter for the next lambda
+    if shift_invariance == 0:
+        n_params = 8*N 
+    elif shift_invariance == 1:
+        n_params = 20
+    elif shift_invariance == 2:
+        n_params = 5
     
     # Prepare initial parameters randomly for each datapoint/state
     params = []
+
     for _ in lams:
         param = np.random.rand(n_params)
         params.append(param)
         
     if circuit:
         # Display the circuit
-        print('+--- CIRCUIT ---+')
+        display(Markdown('CIRCUIT'))
         drawer = qml.draw(vqe_cost_fn)
-        print(drawer(np.arange(n_params), N, H = qml_build_H(N, 0 ,0)))
+        print(drawer([0]*n_params, N, shift_invariance, H = qml_build_H(N, 0 ,0)))
     
     # For each lamda create optimizer and H
     Hs   = []
@@ -202,7 +299,7 @@ def train(step_size, n_epochs, N, J, l_steps, device, vqe_circuit_fun, optimizer
         for lam in lams:
             opts.append(qml.AdamOptimizer(stepsize=step_size))
             
-        def mp_update_params(idx, params, N, vqe_cost_fn, opts, Hs, true_e, p_noise, p_noise_ent):
+        def mp_update_params(idx, params, N, shift_invariance, vqe_cost_fn, opts, Hs, true_e, p_noise, p_noise_ent):
             '''
             Update function to be called inside the training function
             idx              = index to update: idx in range(len(lambdas))
@@ -217,7 +314,7 @@ def train(step_size, n_epochs, N, J, l_steps, device, vqe_circuit_fun, optimizer
             H = Hs[idx]
             opt = opts[idx]
 
-            cost_fn = lambda v: vqe_cost_fn(v, N, H, p_noise, p_noise_ent)
+            cost_fn = lambda v: vqe_cost_fn(v, N, shift_invariance, H, p_noise, p_noise_ent)
             param_next, energy = opt.step_and_cost(cost_fn, param)
 
             return param_next, opt, (energy - true_e[idx] )**2
@@ -237,11 +334,11 @@ def train(step_size, n_epochs, N, J, l_steps, device, vqe_circuit_fun, optimizer
 
                 opt = qml.AdamOptimizer(stepsize=prep_step_size)
                 H = qml_build_H(N, float(lams[prep_l]), J)
-                cost_fn = lambda v: vqe_cost_fn(v, N, H, p_noise, p_noise_ent)
+                cost_fn = lambda v: vqe_cost_fn(v, N, shift_invariance, H, p_noise, p_noise_ent)
 
                 # The first one is given more epochs being the one starting
                 # from totally random parameters
-                prep_epochs = 5*prep_epochs if prep_l == 0 else prep_epochs
+                prep_epochs = 25 if prep_l == 0 else 2
 
                 # Actual VQE algorithm for a datapoint/state
                 for epoch in range(prep_epochs):
@@ -258,7 +355,7 @@ def train(step_size, n_epochs, N, J, l_steps, device, vqe_circuit_fun, optimizer
                 fig, ax = plt.subplots(1, 1, figsize=(9,4))
                 vqe_e  = []
                 for i, lam in enumerate(lams):
-                    cost_fn = lambda v: vqe_cost_fn(v, N, Hs[i], p_noise, p_noise_ent)
+                    cost_fn = lambda v: vqe_cost_fn(v, N, shift_invariance, Hs[i], p_noise, p_noise_ent)
                     vqe_e.append(cost_fn(params[i]) )
 
                 ax.plot(lams, true_e, '--', label='True', color='red', lw = 2)
@@ -272,8 +369,6 @@ def train(step_size, n_epochs, N, J, l_steps, device, vqe_circuit_fun, optimizer
 
                 plt.show()
         
-        # If the VQE parameters are already pretrained we just copy 
-        # the input 'pretrained' as the learning parameters
         elif len(pretrained) > 0:
             params = copy.copy(pretrained)
 
@@ -292,7 +387,7 @@ def train(step_size, n_epochs, N, J, l_steps, device, vqe_circuit_fun, optimizer
                 break
 
             def wrapped_update(idx):
-                return mp_update_params(idx, params, N, vqe_cost_fn, opts, Hs, true_e, p_noise, p_noise_ent)
+                return mp_update_params(idx, params, N, shift_invariance, vqe_cost_fn, opts, Hs, true_e, p_noise, p_noise_ent)
 
             p = multiprocessing.Pool()
             with p: rdata = p.map(wrapped_update, active_points)
@@ -315,17 +410,17 @@ def train(step_size, n_epochs, N, J, l_steps, device, vqe_circuit_fun, optimizer
 
         vqe_e  = []
         for i, lam in enumerate(lams):
-            cost_fn = lambda v: vqe_cost_fn(v, N, Hs[i], p_noise, p_noise_ent)
+            cost_fn = lambda v: vqe_cost_fn(v, N, shift_invariance, Hs[i], p_noise, p_noise_ent)
             vqe_e.append(cost_fn(params[i]) )
-
+        
     elif optimizer.lower() == 'spsa':
         MSEs = [[0]]*(len(lams))
-        def mp_train_param_SPSA(idx, params, N, vqe_cost_fn, Hs, true_e, p_noise, p_noise_ent, epochs, step_size, random_shift, MSEs):
+        def mp_train_param_SPSA(idx, params, N, shift_invariance, vqe_cost_fn, Hs, true_e, p_noise, p_noise_ent, epochs, step_size, random_shift, MSEs):
             param = params[idx]
             H = Hs[idx]
             MSE = MSEs[idx]
             
-            cost_fn = lambda v: vqe_cost_fn(v, N, H, p_noise, p_noise_ent)
+            cost_fn = lambda v: vqe_cost_fn(v, N, shift_invariance, H, p_noise, p_noise_ent)
 
             def callback_SPSA(v):
                 cost_val = cost_fn(v)
@@ -354,7 +449,7 @@ def train(step_size, n_epochs, N, J, l_steps, device, vqe_circuit_fun, optimizer
 
             # We prepare the states of every 3 parameters, the others are copied from the 
             # previous ones
-            prep_progress = tqdm.tqdm(np.arange(0, len(lams), 3))
+            prep_progress = tqdm(np.arange(0, len(lams), 3))
             vqe_e  = []
 
             for prep_l in prep_progress:
@@ -364,11 +459,11 @@ def train(step_size, n_epochs, N, J, l_steps, device, vqe_circuit_fun, optimizer
                     prep_params = params[prep_l - 1]
 
                 H = qml_build_H(N, float(lams[prep_l]), J)
-                cost_fn = lambda v: vqe_cost_fn(v, N, H, p_noise, p_noise_ent)
+                cost_fn = lambda v: vqe_cost_fn(v, N, shift_invariance, H, p_noise, p_noise_ent)
 
                 # The first one is given more epochs being the one starting
                 # from totally random parameters
-                prep_epochs = 5*prep_epochs if prep_l == 0 else prep_epochs
+                prep_epochs = 100 if prep_l == 0 else 50
 
                 res = minimizeSPSA(cost_fn,
                                    x0=prep_params,
@@ -383,11 +478,11 @@ def train(step_size, n_epochs, N, J, l_steps, device, vqe_circuit_fun, optimizer
                 # The following two are copied of the state just found
                 if prep_l+1 < len(lams):
                     params[prep_l+1] = res.x
-                    cost_fn = lambda v: vqe_cost_fn(v, N, H, p_noise, p_noise_ent)
+                    cost_fn = lambda v: vqe_cost_fn(v, N, shift_invariance, H, p_noise, p_noise_ent)
                     MSEs[prep_l + 1] = [(cost_fn(res.x) - true_e[prep_l+1])**2]
                 if prep_l+2 < len(lams):
                     params[prep_l+2] = res.x
-                    cost_fn = lambda v: vqe_cost_fn(v, N, H, p_noise, p_noise_ent)
+                    cost_fn = lambda v: vqe_cost_fn(v, N, shift_invariance, H, p_noise, p_noise_ent)
                     MSEs[prep_l + 2] = [(cost_fn(res.x) - true_e[prep_l+2])**2]
 
             # The VQE performance can be plotted to see how close to the result
@@ -395,7 +490,7 @@ def train(step_size, n_epochs, N, J, l_steps, device, vqe_circuit_fun, optimizer
             if preplots:
                 fig, ax = plt.subplots(1, 1, figsize=(9,4))
                 for i, lam in enumerate(lams):
-                    cost_fn = lambda v: vqe_cost_fn(v, N, Hs[i], p_noise, p_noise_ent)
+                    cost_fn = lambda v: vqe_cost_fn(v, N, shift_invariance, Hs[i], p_noise, p_noise_ent)
                     vqe_e.append(cost_fn(params[i]) )
 
                 ax.plot(lams, true_e, '--', label='True', color='red', lw = 2)
@@ -413,7 +508,7 @@ def train(step_size, n_epochs, N, J, l_steps, device, vqe_circuit_fun, optimizer
             params = copy.copy(pretrained)
 
         def wrapped_update(idx):
-            return mp_train_param_SPSA(idx, params, N, vqe_cost_fn, Hs, true_e, 
+            return mp_train_param_SPSA(idx, params, N, shift_invariance, vqe_cost_fn, Hs, true_e, 
                                        p_noise, p_noise_ent, n_epochs, step_size, random_shift, MSEs)
 
         p = multiprocessing.Pool()
@@ -463,10 +558,10 @@ def train(step_size, n_epochs, N, J, l_steps, device, vqe_circuit_fun, optimizer
         
         rho_dist = []
         for rho in range(l_steps - 1):
-            rho_dist.append( np.real( np.mean( np.square(density_matrices(params[rho], N, 0) - density_matrices(params[rho+1], N, 0)) ) ) )
+            rho_dist.append( np.real( np.mean( np.square(densmat_circ(params[rho], N, 0) - densmat_circ(params[rho+1], N, 0)) ) ) )
             
         ax[3].set_title('Mean square distance between consecutives density matrices')
-        ax[3].plot(np.linspace(0,2*J, num=l_steps-1), rho_dist, '-o')
+        ax[3].plot(np.linspace(0,2*J, num=l_steps-1), rho_dist, '.')
         ax[3].grid(True)
         ax[3].axvline(x=J, color='gray', linestyle='--')
         ax[3].set_xlabel(r'$\lambda$')
@@ -477,54 +572,18 @@ def train(step_size, n_epochs, N, J, l_steps, device, vqe_circuit_fun, optimizer
     for l in lams:
         ys.append(0) if l <= J else ys.append(1)
         
-    return vqe_e, MSE, params, ys   
+    return vqe_e, MSE, params, ys    
 
-#  _  _     
-# | || |    
-# | || |_   
-# |__   _|  
-#    |_|(_) Visualization      
-def show_train_plots(data, N, J, device, vqe_circuit_fun, lsteps = 100):
+vqe_e, errs, thetas, ys = mptrain(step_size, epochs, N, J, l_steps, vqe_cost_fn_mixed, density_matrices, optimizer = 'Adam',
+                                             shift_invariance = shift_invariance, p_noise = 0, p_noise_ent = 0,
+                                             circuit = True, plots = True, prepare_states = False, preplots = False,
+                                             prep_step_size = 0.05, cutoff_value = 0.005)
+
+vqe_data_x = thetas 
+vqe_data_y = ys
     
-    @qml.qnode(device)
-    def vqe_cost_fn(vqe_params, N, H, p_noise = 0, p_noise_ent = 0):
-        vqe_circuit_fun(N, vqe_params, p_noise, p_noise_ent)
-
-        # return <psi|H|psi>
-        return qml.expval(H)
-    
-    lams = np.linspace(0,2*J, lsteps)
-    
-    true_e = []
-    vqe_e = []
-    for i, l in enumerate(lams):
-        circ_params = data[i][0]
-        
-        H = qml_build_H(N, float(l), float(J))
-        true_e.append(np.min(qml.eigvals(H)))
-        vqe_e.append(vqe_cost_fn(circ_params, N, H) )
-        
-    fig, ax = plt.subplots(2, 1, figsize=(12,9.3))
-                          
-    ax[0].plot(lams, true_e, '--', label='True', color='red', lw = 2)
-    ax[0].plot(lams, vqe_e, '.', label='VQE', color='green', lw = 2)
-    ax[0].plot(lams, vqe_e, color='green', lw = 2, alpha=0.6)
-    ax[0].grid(True)
-    ax[0].set_title('Ground States of Ising Hamiltonian ({0}-spins), J = {1}'.format(N,J))
-    ax[0].set_xlabel(r'$\lambda$')
-    ax[0].set_ylabel(r'$E(\lambda)$')
-    ax[0].legend()
-
-    true_e = np.array(true_e)
-    vqe_e = np.array(vqe_e)
-    accuracy = np.abs((true_e-vqe_e)/true_e)
-    ax[1].fill_between(lams, 0.01, max(np.max(accuracy),0.01), color = 'r', alpha = 0.3 )
-    ax[1].fill_between(lams, .01, min(np.min(accuracy),0), color = 'green', alpha = 0.3 )
-    ax[1].axhline(y=0.01, color='r', linestyle='--')
-    ax[1].scatter(lams, accuracy)
-    ax[1].grid(True)
-    ax[1].set_title('Accuracy of VQE'.format(N,J))
-    ax[1].set_xlabel(r'$\lambda$')
-    ax[1].set_ylabel(r'$|(E_{vqe} - E_{true})/E_{true}|$')
-
-    plt.tight_layout()
+vqe_data = []
+for i in range(len(vqe_data_x)):
+    vqe_data.append((vqe_data_x[i],vqe_data_y[i]))
+#vqe_data = np.array(vqe_data)
+joblib.dump(vqe_data, './test')

@@ -2,10 +2,6 @@
 # Quantum libraries:
 import pennylane as qml
 from pennylane import numpy as np
-import jax
-import jax.numpy as jnp
-from jax import jit
-from functools import partial
 
 # Plotting
 from matplotlib import pyplot as plt
@@ -216,54 +212,76 @@ def train(epochs, lr, r_shift, vqe_shift_invariance, N, vqe_conv_noise, vqe_rot_
         print('N          = {0} (Number of spins of the system)'.format(N))
     
     # Initialize parameters randomly
-    params = np.array( np.random.randn(num_params_qcnn(N)) )
+    params = np.array( np.random.randn(100) )
     
     # Cost function to minimize, returning the cross-entropy of the training set
     # Additionally it computes the accuracy of the training and test set 
     # (every 10 epochs)
-    def update(X, Y, X_test, Y_test, pbar, params):
-        # Compute loss and accuracy of the training set
-        cross_entropy = 0
-        corrects = 0
-        for x,y in zip(X,Y):
-            prediction = qcnn_circuit(x, vqe_shift_invariance, params, N,
+    
+    def update(params):
+        global get_c_entropy
+        
+        def get_c_entropy(idx):
+            prediction = qcnn_circuit(X_train[idx], vqe_shift_invariance, params, N,
                                       vqe_conv_noise, vqe_rot_noise, qcnn_conv_noise, qcnn_pool_noise)
             
             # Cross entropy rule
-            cross_entropy += y * np.log(prediction[y]) + (1 - y) * np.log(1 - prediction[1 - y])
+            return - (Y_train[idx] * np.log(prediction[Y_train[idx]]) + (1 - Y_train[idx]) * np.log(1 - prediction[1 - Y_train[idx]]) )
+    
+        # Compute loss and accuracy of the training set
+        cross_entropy = 0
+        
+        p = multiprocessing.Pool()
+        with p: rdata = p.map(get_c_entropy, np.arange(len(X_train)) )
+        
+        rdata = np.array(rdata)
+        
+        return np.sum(rdata)
+    
+    def callback(params):
+        global get_c_entropy_train, get_c_entropy_test
+        
+        def get_c_entropy_train(idx):
+            prediction = qcnn_circuit(X_train[idx], vqe_shift_invariance, params, N,
+                                      vqe_conv_noise, vqe_rot_noise, qcnn_conv_noise, qcnn_pool_noise)
             
-            if np.argmax( prediction ) == y:
-                corrects += 1   
+            if np.argmax( prediction ) == Y_train[idx]:
+                correct = 1  
+            else:
+                correct = 0
             
-        loss_history.append( - cross_entropy )
-        accuracy_history.append(100*corrects/len(Y)) 
+            # Cross entropy rule
+            return -(Y_train[idx] * np.log(prediction[Y_train[idx]]) + (1 - Y_train[idx]) * np.log(1 - prediction[1 - Y_train[idx]]) ), correct
         
-        # Take care of the test set every 10 epochs
-        if len(Y_test) > 0:
-            if (len(loss_history) - 1) % 10 == 0:
-                cross_entropy_test = 0
-                corrects = 0
-                for x, y in zip(X_test, Y_test):
-                    prediction = qcnn_circuit(x, vqe_shift_invariance, params, N,
-                                          vqe_conv_noise, vqe_rot_noise, qcnn_conv_noise, qcnn_pool_noise)
-
-                    cross_entropy_test += y * np.log(prediction[y]) + (1 - y) * np.log(1 - prediction[1 - y])
-
-                    if np.argmax( prediction ) == y:
-                        corrects += 1   
-
-                loss_history_test.append( - cross_entropy_test)
-                accuracy_history_test.append(100*corrects/len(Y_test)) 
+        def get_c_entropy_test(idx):
+            prediction = qcnn_circuit(X_test[idx], vqe_shift_invariance, params, N,
+                                      vqe_conv_noise, vqe_rot_noise, qcnn_conv_noise, qcnn_pool_noise)
+            
+            if np.argmax( prediction ) == Y_test[idx]:
+                correct = 1  
+            else:
+                correct = 0
+                
+            # Cross entropy rule
+            return -( Y_test[idx] * np.log(prediction[Y_test[idx]]) + (1 - Y_test[idx]) * np.log(1 - prediction[1 - Y_test[idx]]) ), correct
         
-        # Update the progress bar:
-        if info:
-            pbar.update()
-            pbar.set_description('Cost: {0} | Accuracy: {1}'.format(loss_history[-1], accuracy_history[-1])  )
+        p = multiprocessing.Pool()
+        with p: rdata = p.map(get_c_entropy_train, np.arange(len(X_train)) )
         
-        return - cross_entropy
-
-    spsa_callback = lambda v: update(X_train, Y_train, X_test, Y_test, pbar, v)
-
+        rdata = np.array(rdata)
+        loss_history.append(np.sum(rdata[:,0]) )
+        accuracy_history.append(100*np.sum(rdata[:,1]/len(X_train) ) )
+        
+        if len(accuracy_history)%10 == 0:
+            p = multiprocessing.Pool()
+            with p: rdata = p.map(get_c_entropy_test, np.arange(len(X_test)) )
+            rdata = np.array(rdata)
+            loss_history_test.append(np.sum(rdata[:,0]) )
+            accuracy_history_test.append(100*np.sum(rdata[:,1]/len(X_test) ) )
+            
+        pbar.update(1)
+        pbar.set_description('Cost: {0} | Accuracy: {1}'.format(loss_history[-1], accuracy_history[-1])  )
+        
     loss_history = []
     accuracy_history = []
     loss_history_test = []
@@ -275,12 +293,13 @@ def train(epochs, lr, r_shift, vqe_shift_invariance, N, vqe_conv_noise, vqe_rot_
     else:
         pbar = False
     
-    res = minimizeSPSA(spsa_callback,
+    res = minimizeSPSA(update,
                        x0=params,
                        niter=epochs,
                        paired=False,
                        c=r_shift,
-                       a=lr)
+                       a=lr,
+                       callback = callback)
     
     # Update final parameterss
     params = res.x
@@ -332,8 +351,7 @@ def plot_results_classification(data, train_index, params, vqe_shift_invariance,
     for i in range(len(data)):
         prediction = qcnn_circuit(data[i][0], vqe_shift_invariance, params, N, vqe_conv_noise, vqe_rot_noise, qcnn_conv_noise, qcnn_pool_noise)
         prediction = prediction[1]
-        #print(qcnn_fun(data[i][0], params))
-
+        
         # if data in training set
         if i in train_index:
             predictions_train.append(prediction)
