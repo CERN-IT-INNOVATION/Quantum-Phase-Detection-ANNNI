@@ -8,7 +8,7 @@ from matplotlib import pyplot as plt
 
 # Other
 import copy
-from tqdm.notebook import tqdm # Pretty progress bars
+import tqdm # Pretty progress bars
 from IPython.display import Markdown, display # Better prints
 import joblib # Writing and loading
 from noisyopt import minimizeSPSA
@@ -24,26 +24,6 @@ import vqe_functions as vqe
 #  | |_  
 #  |_(_) 
 
-def num_params_qcnn(N):
-    '''
-    N = number of wires (spins)
-    To evaluate the number of parameters needed for the qcnn
-    a recursive function is needed:
-    '''
-    n_params = 0
-    # While the number of wires is more than 1s
-    while(N > 1):
-        # Convolution
-        n_params += 3*N
-        # Pooling 
-        n_params += 2*(N//2) + N%2
-        # Reduce number of wires due to pooling
-        N = N // 2 + N % 2
-    
-    # Last RY gate
-    n_params += 1
-    
-    return n_params
 
 #  ____     
 # |___ \    
@@ -78,9 +58,8 @@ def qcnn_convolution(active_wires, params, N, p_index, conv_noise = 0):
     
     # Convolution:
     for wire in active_wires:
-        qml.RX(params[p_index],   wires = int(wire) )
-        qml.RY(params[p_index+1], wires = int(wire) )
-        p_index = p_index + 2
+        qml.RX(params[p_index], wires = int(wire) )
+        p_index = p_index + 1
         
         if noise: qml.PhaseFlip(conv_noise, wires = int(wire) ); qml.BitFlip(conv_noise, wires = int(wire) )
         
@@ -91,7 +70,7 @@ def qcnn_convolution(active_wires, params, N, p_index, conv_noise = 0):
         p_index = p_index + 1
         
         if noise: qml.PhaseFlip(conv_noise, wires = int(wire) ); qml.BitFlip(conv_noise, wires = int(wire) )
-        
+    
     # ---- > Establish entanglement: even connections
     for wire, wire_next in zip(active_wires[1::2], active_wires[2::2]):
         qml.CNOT(wires = [int(wire), int(wire_next)])
@@ -125,8 +104,8 @@ def qcnn_pooling(active_wires, params, N, p_index, pool_noise = 0):
     for wire_meas, wire_next in zip(active_wires[0::2], active_wires[1::2]):
         m_0 = qml.measure(int(wire_meas) )
         qml.cond(m_0 ==0, qml.RY)(params[p_index], wires=int(wire_next) )
-        qml.cond(m_0 ==1, qml.RZ)(params[p_index+1], wires=int(wire_next) )
-        p_index = p_index + 1
+        qml.cond(m_0 ==1, qml.RY)(params[p_index+1], wires=int(wire_next) )
+        p_index = p_index + 2
         
         if noise: qml.PhaseFlip(pool_noise, wires = int(wire_next) ); qml.BitFlip(pool_noise, wires = int(wire_next) )
         
@@ -142,21 +121,20 @@ def qcnn_pooling(active_wires, params, N, p_index, pool_noise = 0):
         
     return p_index, active_wires
 
-def qcnn(params_vqe, vqe_shift_invariance, params, N, vqe_conv_noise = 0, vqe_rot_noise = 0, qcnn_conv_noise = 0, qcnn_pool_noise = 0):
+def qcnn_circuit(params_vqe, vqe_circuit_fun, params, N, vqe_conv_noise = 0, vqe_rot_noise = 0, qcnn_conv_noise = 0, qcnn_pool_noise = 0):
     '''
     Building function for the circuit:
           VQE(params_vqe) + QCNN(params)
     '''
-    # Check on the size of the parameters:
-    if len(params) != num_params_qcnn(N):
-        raise ValueError('Invalid size of parameters')
         
-    # Wires that are not measures (through pooling)
+    # Wires that are not measured (through pooling)
     active_wires = np.arange(N)
     
     # Input: State through VQE
-    vqe.circuit(N, params_vqe, vqe_shift_invariance, p_noise = vqe_rot_noise, p_noise_ent = vqe_conv_noise)
+    vqe_circuit_fun(N, params_vqe, p_noise = vqe_rot_noise, p_noise_ent = vqe_conv_noise)
     
+    # Visual Separation VQE/QCNN
+    qml.Barrier()
     qml.Barrier()
     
     # Index of the parameter vector
@@ -167,10 +145,17 @@ def qcnn(params_vqe, vqe_shift_invariance, params, N, vqe_conv_noise = 0, vqe_ro
         qml.Barrier()
         p_index, active_wires = qcnn_pooling(active_wires, params, N, p_index, pool_noise = qcnn_pool_noise)
         qml.Barrier()
+        p_index = qcnn_convolution(active_wires, params, N, p_index, conv_noise = qcnn_conv_noise)
+        qml.Barrier()
+        p_index, active_wires = qcnn_pooling(active_wires, params, N, p_index, pool_noise = qcnn_pool_noise)
+        qml.Barrier()
     
     # Final Y rotation
     qml.RY(params[p_index], wires = N-1)
     if qcnn_pool_noise > 0: qml.PhaseFlip(qcnn_pool_noise, wires = N - 1 ); qml.BitFlip(qcnn_pool_noise, wires = N - 1 )
+    
+    # Return the number of parameters
+    return p_index + 1
 
 #  _____   
 # |___ /   
@@ -198,41 +183,51 @@ def compute_accuracy(data, params, shift_invariance, N, qcnn_circuit):
     return 100*corrects/len(data)
 
 # Training function
-def train(epochs, lr, r_shift, vqe_shift_invariance, N, vqe_conv_noise, vqe_rot_noise, qcnn_conv_noise, qcnn_pool_noise,
-          qcnn_circuit, X_train, Y_train, X_test = [], Y_test = [], plot = True, info = True):
+def train(epochs, lr, r_shift, N, device, vqe_circuit_fun, qcnn_circuit_fun, 
+          vqe_conv_noise, vqe_rot_noise, qcnn_conv_noise, qcnn_pool_noise, X_train, Y_train, X_test = [], Y_test = [], plot = True, info = True, batch_size = 32):
     
     X_train, Y_train = np.array(X_train), np.array(Y_train)
-    X_test, Y_test = np.array(X_test), np.array(Y_test)    
+    X_test, Y_test = np.array(X_test), np.array(Y_test)
+    
+    @qml.qnode(device)
+    def qcnn_circuit_prob(params_vqe, params, N, vqe_conv_noise, vqe_rot_noise, qcnn_conv_noise, qcnn_pool_noise):
+        qcnn_circuit_fun(params_vqe, vqe_circuit_fun, params, N, vqe_conv_noise, vqe_rot_noise, qcnn_conv_noise, qcnn_pool_noise)
+    
+        return qml.probs(wires = N - 1)
     
     if info:
         display(Markdown('***Parameters:***'))
-        print('a factor   = {0} (\'a\' coefficient of the optimizer)'.format(lr))
-        print('r_shift    = {0} (c coefficient of the optimizer)'.format(r_shift))
-        print('epochs     = {0} (# epochs for learning)'.format(epochs))
-        print('N          = {0} (Number of spins of the system)'.format(N))
+        print('a factor   = {0} (\'a\' coefficient of the optimizer)'.format(lr) )
+        print('r_shift    = {0} (c coefficient of the optimizer)'.format(r_shift) )
+        print('epochs     = {0} (# epochs for learning)'.format(epochs) )
+        print('N          = {0} (Number of spins of the system)'.format(N) )
+        print('batch_size = {0} (batch size of the training process)'.format(batch_size) )
     
-    # Initialize parameters randomly
-    params = np.array( np.random.randn(100) )
+    # Initialize parameters
+    n_params = qcnn_circuit_fun([0]*1000, vqe_circuit_fun, [0]*1000, N)
+    params = [np.pi/4]*n_params
     
     # Cost function to minimize, returning the cross-entropy of the training set
     # Additionally it computes the accuracy of the training and test set 
     # (every 10 epochs)
     
-    def update(params):
+    def update(params, seed = 0):
         global get_c_entropy
+    
+        np.random.seed(seed=seed)
+        sub_train_idx = np.random.choice(np.arange(len(X_train)), batch_size, replace = False)
+        X_train_sub = X_train[sub_train_idx]
+        Y_train_sub = Y_train[sub_train_idx]
         
         def get_c_entropy(idx):
-            prediction = qcnn_circuit(X_train[idx], vqe_shift_invariance, params, N,
-                                      vqe_conv_noise, vqe_rot_noise, qcnn_conv_noise, qcnn_pool_noise)
+            prediction = qcnn_circuit_prob(X_train_sub[idx], params, N,
+                                           vqe_conv_noise, vqe_rot_noise, qcnn_conv_noise, qcnn_pool_noise)
             
             # Cross entropy rule
-            return - (Y_train[idx] * np.log(prediction[Y_train[idx]]) + (1 - Y_train[idx]) * np.log(1 - prediction[1 - Y_train[idx]]) )
-    
-        # Compute loss and accuracy of the training set
-        cross_entropy = 0
+            return - (Y_train_sub[idx] * np.log(prediction[Y_train_sub[idx]]) + (1 - Y_train_sub[idx]) * np.log(1 - prediction[1 - Y_train_sub[idx]]) )
         
         p = multiprocessing.Pool()
-        with p: rdata = p.map(get_c_entropy, np.arange(len(X_train)) )
+        with p: rdata = p.map(get_c_entropy, np.arange(len(X_train_sub)) )
         
         rdata = np.array(rdata)
         
@@ -242,8 +237,8 @@ def train(epochs, lr, r_shift, vqe_shift_invariance, N, vqe_conv_noise, vqe_rot_
         global get_c_entropy_train, get_c_entropy_test
         
         def get_c_entropy_train(idx):
-            prediction = qcnn_circuit(X_train[idx], vqe_shift_invariance, params, N,
-                                      vqe_conv_noise, vqe_rot_noise, qcnn_conv_noise, qcnn_pool_noise)
+            prediction = qcnn_circuit_prob(X_train[idx], params, N,
+                                           vqe_conv_noise, vqe_rot_noise, qcnn_conv_noise, qcnn_pool_noise)
             
             if np.argmax( prediction ) == Y_train[idx]:
                 correct = 1  
@@ -254,8 +249,8 @@ def train(epochs, lr, r_shift, vqe_shift_invariance, N, vqe_conv_noise, vqe_rot_
             return -(Y_train[idx] * np.log(prediction[Y_train[idx]]) + (1 - Y_train[idx]) * np.log(1 - prediction[1 - Y_train[idx]]) ), correct
         
         def get_c_entropy_test(idx):
-            prediction = qcnn_circuit(X_test[idx], vqe_shift_invariance, params, N,
-                                      vqe_conv_noise, vqe_rot_noise, qcnn_conv_noise, qcnn_pool_noise)
+            prediction = qcnn_circuit_prob(X_test[idx], params, N,
+                                           vqe_conv_noise, vqe_rot_noise, qcnn_conv_noise, qcnn_pool_noise)
             
             if np.argmax( prediction ) == Y_test[idx]:
                 correct = 1  
@@ -269,18 +264,20 @@ def train(epochs, lr, r_shift, vqe_shift_invariance, N, vqe_conv_noise, vqe_rot_
         with p: rdata = p.map(get_c_entropy_train, np.arange(len(X_train)) )
         
         rdata = np.array(rdata)
+        
         loss_history.append(np.sum(rdata[:,0]) )
         accuracy_history.append(100*np.sum(rdata[:,1]/len(X_train) ) )
         
-        if len(accuracy_history)%10 == 0:
-            p = multiprocessing.Pool()
-            with p: rdata = p.map(get_c_entropy_test, np.arange(len(X_test)) )
-            rdata = np.array(rdata)
-            loss_history_test.append(np.sum(rdata[:,0]) )
-            accuracy_history_test.append(100*np.sum(rdata[:,1]/len(X_test) ) )
+        if len(Y_test) > 0:
+            if len(accuracy_history)%10 == 0:
+                p = multiprocessing.Pool()
+                with p: rdata = p.map(get_c_entropy_test, np.arange(len(X_test)) )
+                rdata = np.array(rdata)
+                loss_history_test.append(np.sum(rdata[:,0]) )
+                accuracy_history_test.append(100*np.sum(rdata[:,1]/len(X_test) ) )
             
         pbar.update(1)
-        pbar.set_description('Cost: {0} | Accuracy: {1}'.format(loss_history[-1], accuracy_history[-1])  )
+        pbar.set_description('Cost: {0} | Accuracy: {1}'.format(np.round(loss_history[-1],5), np.round(accuracy_history[-1],2) )  )
         
     loss_history = []
     accuracy_history = []
@@ -289,14 +286,14 @@ def train(epochs, lr, r_shift, vqe_shift_invariance, N, vqe_conv_noise, vqe_rot_
     
     #with tqdm(total=epochs) as pbar:
     if info:
-        pbar = tqdm(total = epochs)
+        pbar = tqdm.tqdm(total = epochs, position=0, leave=True)
     else:
         pbar = False
     
     res = minimizeSPSA(update,
                        x0=params,
                        niter=epochs,
-                       paired=False,
+                       paired=True,
                        c=r_shift,
                        a=lr,
                        callback = callback)
@@ -306,7 +303,7 @@ def train(epochs, lr, r_shift, vqe_shift_invariance, N, vqe_conv_noise, vqe_rot_
     
     if plot:
         plt.figure(figsize=(15,5))
-        plt.plot(np.arange(len(loss_history))*10, np.asarray(loss_history), label = 'Training Loss')
+        plt.plot(np.arange(len(loss_history)), np.asarray(loss_history), label = 'Training Loss')
        #if len(X_test) > 0:
             #plt.plot(np.arange(steps), np.asarray(loss_history_test)/len(X_test), color = 'green', label = 'Test Loss')
         plt.axhline(y=0, color='r', linestyle='--')
@@ -335,8 +332,15 @@ def train(epochs, lr, r_shift, vqe_shift_invariance, N, vqe_conv_noise, vqe_rot_
 # |__   _|  
 #    |_|(_) Visualization    
 
-def plot_results_classification(data, train_index, params, vqe_shift_invariance, N, qcnn_circuit,
+def plot_results_classification(data, train_index, params, N, device, vqe_circuit_fun, qcnn_circuit_fun,
                                 vqe_conv_noise = 0, vqe_rot_noise = 0, qcnn_conv_noise = 0, qcnn_pool_noise = 0):
+    
+    @qml.qnode(device)
+    def qcnn_circuit_prob(params_vqe, params, N):
+        qcnn_circuit_fun(params_vqe, vqe_circuit_fun, params, N, 0, 0, 0, 0)
+    
+        return qml.probs(wires = N - 1)
+    
     test_index = []
     for i in range(len(data)):
         if not i in train_index:
@@ -349,7 +353,7 @@ def plot_results_classification(data, train_index, params, vqe_shift_invariance,
     colors_test  = []
 
     for i in range(len(data)):
-        prediction = qcnn_circuit(data[i][0], vqe_shift_invariance, params, N, vqe_conv_noise, vqe_rot_noise, qcnn_conv_noise, qcnn_pool_noise)
+        prediction = qcnn_circuit_prob(data[i][0], params, N)
         prediction = prediction[1]
         
         # if data in training set
@@ -406,5 +410,6 @@ def plot_results_classification(data, train_index, params, vqe_shift_invariance,
     ax[1].set_title('Predictions of labels; J = 1')
     ax[1].scatter(2*np.sort(train_index)/len(data), predictions_train, c = colors_train)
     ax[1].scatter(2*np.sort(test_index)/len(data), predictions_test, c = colors_test)
+    
     
     

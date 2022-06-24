@@ -152,10 +152,16 @@ def train(step_size, n_epochs, N, J, l_steps, device, vqe_circuit_fun, optimizer
     
     if parameter_info:
         print('+--- PARAMETERS ---+')
-        print('step_size    = {0} (Step size of the optimizer)'.format(step_size))
-        print('random_shift = {0} (Random shift of parameters of the optimizer)'.format(random_shift))
-        print('n_epochs     = {0} (# epochs for the other GSs)'.format(n_epochs))
-        print('N            = {0} (Number of spins of the system)\n'.format(N))
+        print('step_size      = {0} (Step size of the optimizer)'.format(step_size))
+        if prepare_states:
+            print('prep_step_size = {0} (Step size in the preparing state phase)'.format(prep_step_size) )
+        if optimizer.lower() == 'spsa':
+            print('random_shift   = {0} (Random shift of parameters of the optimizer)'.format(random_shift))
+        print('n_epochs       = {0} (# epochs for the other GSs)'.format(n_epochs))
+        if prepare_states:
+            print('prep_epochs    = {0} (# epochs in the preparing state phase)'.format(prep_epochs) )
+        print('N              = {0} (Number of spins of the system)'.format(N))
+        print('cutoff_value   = {0} (Cuttoff Value in relative error to stop training)\n'.format(cutoff_value) )
 
     
     @qml.qnode(device)
