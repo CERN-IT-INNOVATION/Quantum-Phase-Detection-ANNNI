@@ -3,7 +3,7 @@
 1. ```$ sudo apt install virtualenv```
 2. ```$ virtualenv <env_name>```
 3. ```$ source <env_name>/bin/activate```
-4. ```(<env_name>)$ pip install -r path/to/requirements.txt```
+4. ```(<env_name>)$ pip install -r ./requirements.txt```
 
 ---
 ## Resources:
