@@ -1,4 +1,10 @@
-# QuantumComputing-Tutorial
+# Phase Estimation through VQE+QCNN
+## Activate the environment:
+1. ```$ sudo apt install virtualenv```
+2. ```$ virtualenv <env_name>```
+3. ```$ source <env_name>/bin/activate```
+4. ```(<env_name>)$ pip install -r path/to/requirements.txt```
+
 ---
 ## Resources:
 ### Quantum Programming
