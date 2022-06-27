@@ -334,102 +334,66 @@ def train(epochs, lr, r_shift, N, device, vqe_circuit_fun, qcnn_circuit_fun,
     return loss_history, accuracy_history, params
 
 # Training function
-def train_jax(epochs, lr, r_shift, N, device, vqe_circuit_fun, qcnn_circuit_fun,
-              X_train, Y_train, X_test = [], Y_test = [], plot = True, info = True, batch_size = 32):
+def jax_train(epochs, lr, N, device, vqe_circuit_fun, qcnn_circuit_fun, X_train, Y_train, X_test = [], Y_test = [], plot = True, info = True):
     
-    X_train, Y_train = np.array(X_train), np.array(Y_train)
-    X_test, Y_test = np.array(X_test), np.array(Y_test)
+    X_train, Y_train = jnp.array(X_train), jnp.array(Y_train)
+    X_test, Y_test = jnp.array(X_test), jnp.array(Y_test)
     
-    @qml.qnode(device, interface="jax", diff_method=None)
+    @qml.qnode(device, interface="jax")
     def qcnn_circuit_prob(params_vqe, params, N):
-        qcnn_circuit_fun(params_vqe, vqe_circuit_fun, params, N, 0, 0, 0, 0)
-
+        qcnn_circuit_fun(params_vqe, vqe_circuit_fun, params, N)
+    
         return qml.probs(wires = N - 1)
+    
+    
+    def compute_cross_entropy(X, Y, params):
+        v_qcnn_prob = jax.vmap(lambda v:  qcnn_circuit_prob(v, params, N) )
+
+        predictions = v_qcnn_prob(X)
+        logprobs = jnp.log(predictions)
+
+        nll = jnp.take_along_axis(logprobs, jnp.expand_dims(Y, axis=1), axis=1)
+        ce = -jnp.mean(nll)
+        
+        return ce
     
     if info:
         print('+-- PARAMETERS ---+')
         print('a factor   = {0} (\'a\' coefficient of the optimizer)'.format(lr) )
-        print('r_shift    = {0} (c coefficient of the optimizer)'.format(r_shift) )
         print('epochs     = {0} (# epochs for learning)'.format(epochs) )
         print('N          = {0} (Number of spins of the system)'.format(N) )
-        print('batch_size = {0} (batch size of the training process)'.format(batch_size) )
     
     # Initialize parameters
     n_params = qcnn_circuit_fun([0]*1000, vqe_circuit_fun, [0]*1000, N)
-    params = [np.pi/4]*n_params
+    params = np.array([np.pi/4]*n_params)
     
     # Cost function to minimize, returning the cross-entropy of the training set
     # Additionally it computes the accuracy of the training and test set 
     # (every 10 epochs)
+    progress = tqdm.tqdm(range(epochs), position=0, leave=True)
     
-    def update(params, seed = 0):
-        np.random.seed(seed=seed)
-        if batch_size == 0:
-            sub_train_idx = np.arange(len(X_train))
-        else:
-            sub_train_idx = np.random.choice(np.arange(len(X_train)), batch_size, replace = False)
-            
-        X_train_sub = jnp.array(X_train[sub_train_idx])
-        Y_train_sub = jnp.array(Y_train[sub_train_idx])
-        
-        wrapper_circuit = lambda vqe: qcnn_circuit_prob(vqe, params, N)
-        vcircuit = jax.vmap(wrapper_circuit)
-        predictions = vcircuit(X_train_sub)
-        
-        cross_entropy = - np.sum( np.log(predictions[np.where(np.equal(Y_train_sub,1) ),1] )  ) - np.sum(np.log( 1 - predictions[np.where(np.equal(Y_train_sub,0) ),1] ) )
-            
-        return cross_entropy
+    d_compute_cross_entropy = jax.jit( jax.grad(lambda p: compute_cross_entropy(X_train, Y_train, p) ) )
     
-    def callback(params):
-        wrapper_circuit = lambda vqe: qcnn_circuit_prob(vqe, params, N)
-        vcircuit = jax.vmap(wrapper_circuit)
-        predictions = vcircuit(X_train)
-
-        cross_entropy = - np.sum( np.log(predictions[np.where(np.equal(Y_train,1) ),1] )  ) - np.sum(np.log( 1 - predictions[np.where(np.equal(Y_train,0) ),1] ) )
-
-        accuracy_history.append( 100*np.sum(np.argmax(predictions, axis=1) == Y_train)/len(Y_train) )
-        loss_history.append( cross_entropy )
-
-        if len(Y_test) > 0:
-            if len(accuracy_history)%10 == 0:
-                predictions = vcircuit(X_test)
-
-                cross_entropy = - np.sum( np.log(predictions[np.where(np.equal(Y_test,1) ),1] )  ) - np.sum(np.log( 1 - predictions[np.where(np.equal(Y_test,0) ),1] ) )
-
-                accuracy_history_test.append( 100*np.sum(np.argmax(predictions, axis=1) == Y_test)/len(Y_test) )
-                loss_history_test.append( cross_entropy )
-        
-        if info:
-            pbar.update(1)
-            pbar.set_description('Cost: {0} | Accuracy: {1}'.format(np.round(loss_history[-1],5), np.round(accuracy_history[-1],2) )  )
-        
+    train_compute_cross_entropy = jax.jit(lambda p: compute_cross_entropy(X_train, Y_train, p) ) 
+    test_compute_cross_entropy  = jax.jit(lambda p: compute_cross_entropy(X_test, Y_test, p) ) 
+    
     loss_history = []
-    accuracy_history = []
     loss_history_test = []
-    accuracy_history_test = []
-    
-    #with tqdm(total=epochs) as pbar:
-    if info:
-        pbar = tqdm.tqdm(total = epochs, position=0, leave=True)
-    else:
-        pbar = False
-    
-    res = minimizeSPSA(update,
-                       x0=params,
-                       niter=epochs,
-                       paired=True,
-                       c=r_shift,
-                       a=lr,
-                       callback = callback)
-    
-    # Update final parameterss
-    params = res.x
-    
+    for epoch in range(epochs):
+        params -= lr*d_compute_cross_entropy(params)
+        
+        if epoch % 100 == 0:
+            loss_history.append(train_compute_cross_entropy(params) )
+            if len(Y_test) > 0:
+                loss_history_test.append(test_compute_cross_entropy(params) )
+        progress.update(1)
+        progress.set_description('Cost: {0}'.format(loss_history[-1]) )
+        
     if plot:
         plt.figure(figsize=(15,5))
-        plt.plot(np.arange(len(loss_history)), np.asarray(loss_history), label = 'Training Loss')
-       #if len(X_test) > 0:
-            #plt.plot(np.arange(steps), np.asarray(loss_history_test)/len(X_test), color = 'green', label = 'Test Loss')
+        plt.plot(np.arange(len(loss_history))*100, np.asarray(loss_history), label = 'Training Loss')
+        if len(X_test) > 0:
+             plt.plot(np.arange(len(loss_history_test))*100, np.asarray(loss_history_test), label = 'Test Loss')
         plt.axhline(y=0, color='r', linestyle='--')
         plt.title('Loss history')
         plt.ylabel('Average Cross entropy')
@@ -437,18 +401,7 @@ def train_jax(epochs, lr, r_shift, N, device, vqe_circuit_fun, qcnn_circuit_fun,
         plt.grid(True)
         plt.legend()
         
-        plt.figure(figsize=(15,4))
-        plt.plot(np.arange(len(accuracy_history)), accuracy_history, color='orange', label = 'Training Accuracy')
-        if len(X_test) > 0:
-            plt.plot(np.arange(len(accuracy_history_test))*10, accuracy_history_test, color='violet', label = 'Test Accuracy')
-        plt.axhline(y=100, color='r', linestyle='--')
-        plt.title('Accuracy')
-        plt.ylabel('%')
-        plt.xlabel('Epoch')
-        plt.grid(True)
-        plt.legend()
-        
-    return loss_history, accuracy_history, params
+    return loss_history, params
 
 #  _  _     
 # | || |    
@@ -536,4 +489,81 @@ def plot_results_classification(data, train_index, params, N, device, vqe_circui
     ax[1].scatter(2*np.sort(test_index)/len(data), predictions_test, c = colors_test)
     
     
+
+def jax_plot_results_classification(X, Y, train_index, params, N, device, vqe_circuit_fun, qcnn_circuit_fun):
     
+    @qml.qnode(device, interface="jax")
+    def qcnn_circuit_prob(params_vqe, params, N):
+        qcnn_circuit_fun(params_vqe, vqe_circuit_fun, params, N, 0, 0, 0, 0)
+    
+        return qml.probs(wires = N - 1)
+    
+    test_index = []
+    for i in range(len(Y)):
+        if not i in train_index:
+            test_index.append(i)
+    
+    predictions_train = []
+    predictions_test  = []
+
+    colors_train = []
+    colors_test  = []
+    
+    vcircuit = jax.vmap(lambda v:  qcnn_circuit_prob(v, params, N), in_axes=(0))
+    predictions = vcircuit(X)[:,1]
+    
+    for i, prediction in enumerate(predictions):
+        # if data in training set
+        if i in train_index:
+            predictions_train.append(prediction)
+            if np.round(prediction) == 0:
+                if i <= len(Y)/2:
+                    colors_train.append('green')
+                else:
+                    colors_train.append('red')
+            else:
+                if i <= len(Y)/2:
+                    colors_train.append('red')
+                else:
+                    colors_train.append('green')
+        else:
+            predictions_test.append(prediction)
+            if np.round(prediction) == 0:
+                if i <= len(Y)/2:
+                    colors_test.append('green')
+                else:
+                    colors_test.append('red')
+            else:
+                if i <= len(Y)/2:
+                    colors_test.append('red')
+                else:
+                    colors_test.append('green')
+    
+    fig, ax = plt.subplots(2, 1, figsize=(16,10))
+
+    ax[0].set_xlim(-0.1,2.1)
+    ax[0].set_ylim(0,1)
+    ax[0].grid(True)
+    ax[0].axhline(y=.5, color='gray', linestyle='--')
+    ax[0].axvline(x=1, color='gray', linestyle='--')
+    ax[0].text(0.375, .68, 'I', fontsize=24, fontfamily='serif')
+    ax[0].text(1.6, .68, 'II', fontsize=24, fontfamily='serif')
+    ax[0].set_xlabel('Transverse field')
+    ax[0].set_ylabel('Prediction of label II')
+    ax[0].set_title('Predictions of labels; J = 1')
+    ax[0].scatter(2*np.sort(train_index)/len(X), predictions_train, c = 'royalblue', label='Training samples')
+    ax[0].scatter(2*np.sort(test_index)/len(X), predictions_test, c = 'orange', label='Test samples')
+    ax[0].legend()
+
+    ax[1].set_xlim(-0.1,2.1)
+    ax[1].set_ylim(0,1)
+    ax[1].grid(True)
+    ax[1].axhline(y=.5, color='gray', linestyle='--')
+    ax[1].axvline(x=1, color='gray', linestyle='--')
+    ax[1].text(0.375, .68, 'I', fontsize=24, fontfamily='serif')
+    ax[1].text(1.6, .68, 'II', fontsize=24, fontfamily='serif')
+    ax[1].set_xlabel('Transverse field')
+    ax[1].set_ylabel('Prediction of label II')
+    ax[1].set_title('Predictions of labels; J = 1')
+    ax[1].scatter(2*np.sort(train_index)/len(X), predictions_train, c = colors_train)
+    ax[1].scatter(2*np.sort(test_index)/len(X), predictions_test, c = colors_test)
