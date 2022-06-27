@@ -132,3 +132,5 @@ dmypy.json
 
 # My
 other/
+# environment folder
+qua/ 

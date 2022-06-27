@@ -9,7 +9,6 @@ from matplotlib import pyplot as plt
 # Other
 import copy
 import tqdm # Pretty progress bars
-from IPython.display import Markdown, display # Better prints
 import joblib # Writing and loading
 from noisyopt import minimizeSPSA
 
@@ -22,15 +21,15 @@ import multiprocessing
 #  | |_  
 #  |_(_) 
 
-def qml_build_H(N, lam, J, ring = True):
+def qml_build_H(N, lam, J, ring = False):
     '''
     Set up Hamiltonian: 
             H = lam*Σsigma^i_z - J*Σsigma^i_x*sigma^{i+1}_ 
     '''
     # Interaction of spins with magnetic field
-    H = - lam * qml.PauliZ(0)
+    H = + lam * qml.PauliZ(0)
     for i in range(1,N):
-        H = H - lam * qml.PauliZ(i)
+        H = H + lam * qml.PauliZ(i)
         
     # Interaction between spins:
     for i in range(0,N-1):
@@ -93,20 +92,25 @@ def circuit_block_2(N, param, index = 0, p_noise = 0):
             
     return index + N
 
-def circuit_entanglement(N, params, index, p_noise_ent = 0):
+def circuit_entanglement(N, params, index, p_noise_ent = 0, going_down = True):
     # Apply entanglement to the neighbouring spins
     noise = True
     if p_noise_ent == 0: noise = False # Remove BitFlip and PhaseFlip if we are not using default.mixed
     
-    for spin in range(0,N-1):
-        qml.CNOT(wires = [spin, spin+1])
-        #qml.CRZ(params[index + spin], wires = [spin, spin+1])
-        if noise: qml.PhaseFlip(p_noise_ent, wires = spin+1); qml.BitFlip(p_noise_ent, wires = spin+1)
-    
-    #qml.CRZ(params[index + spin + 1], wires = [N-1, 0])
-    qml.CNOT(wires =[N-1, 0])
-    if noise: qml.PhaseFlip(p_noise_ent, wires = 0); qml.BitFlip(p_noise_ent, wires = 0)
-        
+    if going_down:
+        for spin in range(0,N-1):
+            qml.CNOT(wires = [spin, spin+1])
+            #qml.RX(params[index+spin], wires = spin+1)
+            
+            if noise: qml.PhaseFlip(p_noise_ent, wires = spin+1); qml.BitFlip(p_noise_ent, wires = spin+1)
+            
+    else:
+        for spin in range(N-1,0,-1):
+            qml.CNOT(wires = [spin, spin-1])
+            #qml.RX(params[index+spin], wires = spin-1)
+            
+            if noise: qml.PhaseFlip(p_noise_ent, wires = spin-1); qml.BitFlip(p_noise_ent, wires = spin-1)
+            
     return index
 
 def vqe_circuit(N, params, p_noise = 0, p_noise_ent = 0):
@@ -118,11 +122,7 @@ def vqe_circuit(N, params, p_noise = 0, p_noise_ent = 0):
     qml.Barrier()
     index = circuit_entanglement(N, params, index, p_noise_ent)
     qml.Barrier()
-    index = circuit_block_1(N, params, index, p_noise = p_noise)
-    qml.Barrier()
-    index = circuit_entanglement(N, params, index, p_noise_ent)
-    qml.Barrier()
-    index = circuit_block_1(N, params,  index, p_noise = p_noise)
+    index = circuit_block_2(N, params,  index, p_noise = p_noise)
     
     return index
 
@@ -134,8 +134,8 @@ def vqe_circuit(N, params, p_noise = 0, p_noise_ent = 0):
 # |____(_) Learning functions
     
 def train(step_size, n_epochs, N, J, l_steps, device, vqe_circuit_fun, optimizer = 'adam', random_shift = 0, p_noise = 0, p_noise_ent = 0, 
-            circuit = False, plots = False, prepare_states = False, preplots = False, prep_step_size = False, prep_epochs = 10, parameter_info = True,
-            cutoff_value = 0.01, pretrained = []):
+          circuit = False, plots = False, prepare_states = False, preplots = False, prep_step_size = False, first_prep_epoch = 50, prep_epochs = 10,
+          parameter_info = True, cutoff_value = 0.01, pretrained = []):
     
     lams = np.linspace(0, 2*J, l_steps)
     # define the wrapper update function to be called inside a multiprocessing map 
@@ -208,7 +208,7 @@ def train(step_size, n_epochs, N, J, l_steps, device, vqe_circuit_fun, optimizer
         for lam in lams:
             opts.append(qml.AdamOptimizer(stepsize=step_size))
             
-        def mp_update_params(idx, params, N, vqe_cost_fn, opts, Hs, true_e, p_noise, p_noise_ent):
+        def mp_update_params(idx, params, N, vqe_cost_fn, opts, Hs, true_e, p_noise, p_noise_ent, epoch):
             '''
             Update function to be called inside the training function
             idx              = index to update: idx in range(len(lambdas))
@@ -224,8 +224,9 @@ def train(step_size, n_epochs, N, J, l_steps, device, vqe_circuit_fun, optimizer
             opt = opts[idx]
 
             cost_fn = lambda v: vqe_cost_fn(v, N, H, p_noise, p_noise_ent)
+            
             param_next, energy = opt.step_and_cost(cost_fn, param)
-
+            
             return param_next, opt, (energy - true_e[idx] )**2
         
         if prepare_states:
@@ -233,7 +234,7 @@ def train(step_size, n_epochs, N, J, l_steps, device, vqe_circuit_fun, optimizer
 
             # We prepare the states of every 3 parameters, the others are copied from the 
             # previous ones
-            prep_progress = tqdm.tqdm(np.arange(0, len(lams), 3))
+            prep_progress = tqdm.tqdm(np.arange(0, len(lams), 1))
 
             for prep_l in prep_progress:
                 if prep_l == 0:
@@ -247,16 +248,16 @@ def train(step_size, n_epochs, N, J, l_steps, device, vqe_circuit_fun, optimizer
 
                 # The first one is given more epochs being the one starting
                 # from totally random parameters
-                prep_epochs = 5*prep_epochs if prep_l == 0 else prep_epochs
+                prep_epoch = first_prep_epoch if prep_l == 0 else prep_epochs
 
                 # Actual VQE algorithm for a datapoint/state
-                for epoch in range(prep_epochs):
+                for epoch in range(prep_epoch):
                     prep_params, _ = opt.step_and_cost(cost_fn, prep_params)
 
                 params[prep_l] = prep_params
                 # The following two are copied of the state just found
-                if prep_l+1 < len(lams): params[prep_l+1] = prep_params
-                if prep_l+2 < len(lams): params[prep_l+2] = prep_params
+                #if prep_l+1 < len(lams): params[prep_l+1] = prep_params
+                #if prep_l+2 < len(lams): params[prep_l+2] = prep_params
 
             # The VQE performance can be plotted to see how close to the result
             # it is before the actual training
@@ -289,7 +290,7 @@ def train(step_size, n_epochs, N, J, l_steps, device, vqe_circuit_fun, optimizer
         #   train only the datapoints/states that 
         #   have a relative error greater than CUTOFF
         active_points = np.arange(len(lams))
-
+        
         for epoch in progress:
             # In the happy scenario all points have a relative error below CUTOFF
             # we can just stop the training aswell
@@ -298,7 +299,7 @@ def train(step_size, n_epochs, N, J, l_steps, device, vqe_circuit_fun, optimizer
                 break
 
             def wrapped_update(idx):
-                return mp_update_params(idx, params, N, vqe_cost_fn, opts, Hs, true_e, p_noise, p_noise_ent)
+                return mp_update_params(idx, params, N, vqe_cost_fn, opts, Hs, true_e, p_noise, p_noise_ent, epoch)
 
             p = multiprocessing.Pool()
             with p: rdata = p.map(wrapped_update, active_points)

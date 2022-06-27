@@ -2,6 +2,10 @@
 # Quantum libraries:
 import pennylane as qml
 from pennylane import numpy as np
+import jax
+import jax.numpy as jnp
+from jax import jit
+from functools import partial
 
 # Plotting
 from matplotlib import pyplot as plt
@@ -9,7 +13,6 @@ from matplotlib import pyplot as plt
 # Other
 import copy
 import tqdm # Pretty progress bars
-from IPython.display import Markdown, display # Better prints
 import joblib # Writing and loading
 from noisyopt import minimizeSPSA
 
@@ -196,7 +199,7 @@ def train(epochs, lr, r_shift, N, device, vqe_circuit_fun, qcnn_circuit_fun,
         return qml.probs(wires = N - 1)
     
     if info:
-        display(Markdown('***Parameters:***'))
+        print('+-- PARAMETERS ---+')
         print('a factor   = {0} (\'a\' coefficient of the optimizer)'.format(lr) )
         print('r_shift    = {0} (c coefficient of the optimizer)'.format(r_shift) )
         print('epochs     = {0} (# epochs for learning)'.format(epochs) )
@@ -215,7 +218,10 @@ def train(epochs, lr, r_shift, N, device, vqe_circuit_fun, qcnn_circuit_fun,
         global get_c_entropy
     
         np.random.seed(seed=seed)
-        sub_train_idx = np.random.choice(np.arange(len(X_train)), batch_size, replace = False)
+        if batch_size == 0:
+            sub_train_idx = np.arange(len(X_train))
+        else:
+            sub_train_idx = np.random.choice(np.arange(len(X_train)), batch_size, replace = False)
         X_train_sub = X_train[sub_train_idx]
         Y_train_sub = Y_train[sub_train_idx]
         
@@ -275,9 +281,127 @@ def train(epochs, lr, r_shift, N, device, vqe_circuit_fun, qcnn_circuit_fun,
                 rdata = np.array(rdata)
                 loss_history_test.append(np.sum(rdata[:,0]) )
                 accuracy_history_test.append(100*np.sum(rdata[:,1]/len(X_test) ) )
+        
+        if info:
+            pbar.update(1)
+            pbar.set_description('Cost: {0} | Accuracy: {1}'.format(np.round(loss_history[-1],5), np.round(accuracy_history[-1],2) )  )
+        
+    loss_history = []
+    accuracy_history = []
+    loss_history_test = []
+    accuracy_history_test = []
+    
+    #with tqdm(total=epochs) as pbar:
+    if info:
+        pbar = tqdm.tqdm(total = epochs, position=0, leave=True)
+    else:
+        pbar = False
+    
+    res = minimizeSPSA(update,
+                       x0=params,
+                       niter=epochs,
+                       paired=True,
+                       c=r_shift,
+                       a=lr,
+                       callback = callback)
+    
+    # Update final parameterss
+    params = res.x
+    
+    if plot:
+        plt.figure(figsize=(15,5))
+        plt.plot(np.arange(len(loss_history)), np.asarray(loss_history), label = 'Training Loss')
+       #if len(X_test) > 0:
+            #plt.plot(np.arange(steps), np.asarray(loss_history_test)/len(X_test), color = 'green', label = 'Test Loss')
+        plt.axhline(y=0, color='r', linestyle='--')
+        plt.title('Loss history')
+        plt.ylabel('Average Cross entropy')
+        plt.xlabel('Epoch')
+        plt.grid(True)
+        plt.legend()
+        
+        plt.figure(figsize=(15,4))
+        plt.plot(np.arange(len(accuracy_history)), accuracy_history, color='orange', label = 'Training Accuracy')
+        if len(X_test) > 0:
+            plt.plot(np.arange(len(accuracy_history_test))*10, accuracy_history_test, color='violet', label = 'Test Accuracy')
+        plt.axhline(y=100, color='r', linestyle='--')
+        plt.title('Accuracy')
+        plt.ylabel('%')
+        plt.xlabel('Epoch')
+        plt.grid(True)
+        plt.legend()
+        
+    return loss_history, accuracy_history, params
+
+# Training function
+def train_jax(epochs, lr, r_shift, N, device, vqe_circuit_fun, qcnn_circuit_fun,
+              X_train, Y_train, X_test = [], Y_test = [], plot = True, info = True, batch_size = 32):
+    
+    X_train, Y_train = np.array(X_train), np.array(Y_train)
+    X_test, Y_test = np.array(X_test), np.array(Y_test)
+    
+    @qml.qnode(device, interface="jax", diff_method=None)
+    def qcnn_circuit_prob(params_vqe, params, N):
+        qcnn_circuit_fun(params_vqe, vqe_circuit_fun, params, N, 0, 0, 0, 0)
+
+        return qml.probs(wires = N - 1)
+    
+    if info:
+        print('+-- PARAMETERS ---+')
+        print('a factor   = {0} (\'a\' coefficient of the optimizer)'.format(lr) )
+        print('r_shift    = {0} (c coefficient of the optimizer)'.format(r_shift) )
+        print('epochs     = {0} (# epochs for learning)'.format(epochs) )
+        print('N          = {0} (Number of spins of the system)'.format(N) )
+        print('batch_size = {0} (batch size of the training process)'.format(batch_size) )
+    
+    # Initialize parameters
+    n_params = qcnn_circuit_fun([0]*1000, vqe_circuit_fun, [0]*1000, N)
+    params = [np.pi/4]*n_params
+    
+    # Cost function to minimize, returning the cross-entropy of the training set
+    # Additionally it computes the accuracy of the training and test set 
+    # (every 10 epochs)
+    
+    def update(params, seed = 0):
+        np.random.seed(seed=seed)
+        if batch_size == 0:
+            sub_train_idx = np.arange(len(X_train))
+        else:
+            sub_train_idx = np.random.choice(np.arange(len(X_train)), batch_size, replace = False)
             
-        pbar.update(1)
-        pbar.set_description('Cost: {0} | Accuracy: {1}'.format(np.round(loss_history[-1],5), np.round(accuracy_history[-1],2) )  )
+        X_train_sub = jnp.array(X_train[sub_train_idx])
+        Y_train_sub = jnp.array(Y_train[sub_train_idx])
+        
+        wrapper_circuit = lambda vqe: qcnn_circuit_prob(vqe, params, N)
+        vcircuit = jax.vmap(wrapper_circuit)
+        predictions = vcircuit(X_train_sub)
+        
+        cross_entropy = - np.sum( np.log(predictions[np.where(np.equal(Y_train_sub,1) ),1] )  ) - np.sum(np.log( 1 - predictions[np.where(np.equal(Y_train_sub,0) ),1] ) )
+            
+        return cross_entropy
+    
+    def callback(params):
+        wrapper_circuit = lambda vqe: qcnn_circuit_prob(vqe, params, N)
+        vcircuit = jax.vmap(wrapper_circuit)
+        predictions = vcircuit(X_train)
+
+        cross_entropy = - np.sum( np.log(predictions[np.where(np.equal(Y_train,1) ),1] )  ) - np.sum(np.log( 1 - predictions[np.where(np.equal(Y_train,0) ),1] ) )
+
+        accuracy_history.append( 100*np.sum(np.argmax(predictions, axis=1) == Y_train)/len(Y_train) )
+        loss_history.append( cross_entropy )
+
+        if len(Y_test) > 0:
+            if len(accuracy_history)%10 == 0:
+                predictions = vcircuit(X_test)
+
+                cross_entropy = - np.sum( np.log(predictions[np.where(np.equal(Y_test,1) ),1] )  ) - np.sum(np.log( 1 - predictions[np.where(np.equal(Y_test,0) ),1] ) )
+
+                accuracy_history_test.append( 100*np.sum(np.argmax(predictions, axis=1) == Y_test)/len(Y_test) )
+                loss_history_test.append( cross_entropy )
+        
+        if info:
+            pbar.update(1)
+            pbar.set_description('Cost: {0} | Accuracy: {1}'.format(np.round(loss_history[-1],5), np.round(accuracy_history[-1],2) )  )
         
     loss_history = []
     accuracy_history = []
