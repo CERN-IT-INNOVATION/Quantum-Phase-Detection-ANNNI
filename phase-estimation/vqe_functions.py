@@ -2,6 +2,10 @@
 # Quantum libraries:
 import pennylane as qml
 from pennylane import numpy as np
+import jax
+import jax.numpy as jnp
+from jax import jit
+from functools import partial
 
 # Plotting
 from matplotlib import pyplot as plt
@@ -27,18 +31,18 @@ def qml_build_H(N, lam, J, ring = False):
             H = lam*Σsigma^i_z - J*Σsigma^i_x*sigma^{i+1}_ 
     '''
     # Interaction of spins with magnetic field
-    H = + lam * qml.PauliZ(0)
+    H = + lam * qml.PauliX(0)
     for i in range(1,N):
-        H = H + lam * qml.PauliZ(i)
+        H = H + lam * qml.PauliX(i)
         
     # Interaction between spins:
     for i in range(0,N-1):
-        H = H + J*(-1)*( qml.PauliX(i) @ qml.PauliX(i+1) )
+        H = H + J*(-1)*( qml.PauliZ(i) @ qml.PauliZ(i+1) )
     
     # Ring
     if ring:
         # Create interaction between first and last qubit
-        H = H + J*(-1)*( qml.PauliX(N-1) @ qml.PauliX(0) )
+        H = H + J*(-1)*( qml.PauliZ(N-1) @ qml.PauliZ(0) )
     
     return H
 
@@ -99,7 +103,7 @@ def circuit_entanglement(N, params, index, p_noise_ent = 0, going_down = True):
     
     if going_down:
         for spin in range(0,N-1):
-            qml.CNOT(wires = [spin, spin+1])
+            qml.IsingZZ(params[index+spin], wires = [spin, spin+1])
             #qml.RX(params[index+spin], wires = spin+1)
             
             if noise: qml.PhaseFlip(p_noise_ent, wires = spin+1); qml.BitFlip(p_noise_ent, wires = spin+1)
@@ -111,7 +115,7 @@ def circuit_entanglement(N, params, index, p_noise_ent = 0, going_down = True):
             
             if noise: qml.PhaseFlip(p_noise_ent, wires = spin-1); qml.BitFlip(p_noise_ent, wires = spin-1)
             
-    return index
+    return index + N - 1
 
 def vqe_circuit(N, params, p_noise = 0, p_noise_ent = 0):
     index = circuit_block_1(N, params, p_noise = p_noise)
@@ -122,7 +126,10 @@ def vqe_circuit(N, params, p_noise = 0, p_noise_ent = 0):
     qml.Barrier()
     index = circuit_entanglement(N, params, index, p_noise_ent)
     qml.Barrier()
-    index = circuit_block_2(N, params,  index, p_noise = p_noise)
+    index = circuit_block_1(N, params, index, p_noise = p_noise)
+    index = circuit_entanglement(N, params, index, p_noise_ent)
+    qml.Barrier()
+    index = circuit_block_1(N, params, index, p_noise = p_noise)
     
     return index
 
@@ -485,6 +492,170 @@ def train(step_size, n_epochs, N, J, l_steps, device, vqe_circuit_fun, optimizer
         ys.append(0) if l <= J else ys.append(1)
         
     return vqe_e, MSE, params, ys   
+
+def jax_train(step_size, n_epochs, N, J, l_steps, device, vqe_circuit_fun, reg = 0, circuit = False, plots = False, parameter_info = True):
+    # IDEA: Making the Jax version of a VQE eigensolver is a bit less intuitive that in the QCNN learning function,
+    #       since here we have l_steps different circuit since each output of the circuit is <psi|H|psi> where H,
+    #       changes for each datapoints.
+    #       Here the output of each circuit is |psi>, while the Hs is moved to the loss function
+    #       <PSI|Hs|PSI> is computed through 2 jax.einsum
+    
+    # circuit functions returns the number of parameters needed for the circuit itself
+    n_params = vqe_circuit_fun(N, [0]*1000)
+    
+    if parameter_info:
+        print('+--- PARAMETERS ---+')
+        print('step_size      = {0} (Step size of the optimizer)'.format(step_size))
+        print('n_epochs       = {0} (# epochs for the other GSs)'.format(n_epochs))
+        print('N              = {0} (Number of spins of the system)'.format(N))
+    
+    ### JAX FUNCTIONS ###
+    
+    # Circuit that returns the state |psi> 
+    @qml.qnode(device, interface="jax")
+    def vqe_state(vqe_params, N):
+        vqe_circuit_fun(N, vqe_params)
+        
+        return qml.state()
+    
+    if circuit:
+        # Display the circuit
+        print('+--- CIRCUIT ---+')
+        drawer = qml.draw(vqe_state)
+        print(drawer(np.arange(n_params), N))
+    
+    
+    # vmap of the circuit
+    v_vqe_state = jax.vmap(lambda v:  vqe_state(v, N), in_axes=(0))
+    
+    # jitted vmap of the circuit
+    jv_vqe_state = jax.jit(v_vqe_state)
+    
+    # computes <psi|H|psi>
+    def compute_E(state, Hmat):
+        return jnp.conj(state) @ Hmat @ state
+    
+    # vmapped function for <psi|H|psi>
+    v_compute_E = jax.vmap(compute_E, in_axes=(0,0) )
+    
+    # Regularizator of the optimizer
+    def compute_diff_states(states):
+        return jnp.mean(jnp.square(jnp.diff(jnp.real(states), axis = 1) ) )
+    
+    # Computes MSE of the true energies - vqe energies: function to minimize
+    def update(params):
+        pred_states = v_vqe_state(params)
+        vqe_e = v_compute_E(pred_states, Hsmat)
+        
+        if reg != 0:
+            return jnp.mean(jnp.square(jnp.real(vqe_e)-true_e)) + reg * compute_diff_states(pred_states)
+        else:
+            return jnp.mean(jnp.square(jnp.real(vqe_e)-true_e))
+    
+    # Same function as above but returns the energies not MSE
+    def compute_vqe(params):
+        pred_states = v_vqe_state(params)
+        vqe_e = v_compute_E(pred_states, Hsmat)
+
+        return jnp.real(vqe_e)
+    
+    # Grad function of the MSE, used in updating the parameters
+    jd_update = jax.jit(jax.grad(update))
+    
+    j_compute_vqe = jax.jit(compute_vqe)
+    
+    lams = np.linspace(0, 2*J, l_steps)
+    
+    # Prepare initial parameters randomly for each datapoint/state
+    # We start from the same datapoint
+    param = np.random.rand(n_params)
+    params0 = []
+    for _ in lams:
+        params0.append(param)
+    
+    params = jnp.array(params0)
+    
+    # For each lamda create optimizer and H
+    Hs    = []
+    Hsmat = []
+    opts  = []
+    energy_err  = [0]*(len(lams))
+    true_e = []
+    
+    for i, lam in enumerate(lams):
+        # Pennylane matrices
+        Hs.append(qml_build_H(N, float(lam), float(J) ))
+        # True groundstate energies
+        true_e.append(np.min(qml.eigvals(Hs[i])) )
+        # Standard matrix for of the hamiltonians
+        Hsmat.append(qml.matrix(Hs[-1]) )
+    
+    true_e = jnp.array(true_e)
+    Hsmat = jnp.array(Hsmat)
+    
+    progress = tqdm.tqdm(range(n_epochs), position=0, leave=True)
+    
+    MSE = []
+    for it in progress:
+        params -= step_size*jd_update(params)
+        # I want to skip when it == 0
+        if (it+1) % 1000 == 0:
+            MSE.append( jnp.mean(jnp.square(j_compute_vqe(params)- true_e) )  )
+            
+            # Update progress bar
+            progress.set_description('Cost: {0}'.format(MSE[-1]) )
+            
+    vqe_e = j_compute_vqe(params)
+    
+    if plots:
+        fig, ax = plt.subplots(4, 1, figsize=(12,18.6))
+                          
+        ax[0].plot(lams, true_e, '--', label='True', color='red', lw = 2)
+        ax[0].plot(lams, vqe_e, '.', label='VQE', color='green', lw = 2)
+        ax[0].plot(lams, vqe_e, color='green', lw = 2, alpha=0.6)
+        ax[0].grid(True)
+        ax[0].set_title('Ground States of Ising Hamiltonian ({0}-spins), J = {1}'.format(N,J))
+        ax[0].set_xlabel(r'$\lambda$')
+        ax[0].set_ylabel(r'$E(\lambda)$')
+        ax[0].legend()
+        
+        ax[1].plot(np.arange(len(MSE))*1000, MSE, '.', color='orange', ms = 7 )
+        ax[1].plot(np.arange(len(MSE))*1000, MSE, color='orange', alpha=0.4)
+        ax[1].set_title('Convergence of VQE')
+        ax[1].set_xlabel('Epoch')
+        ax[1].set_ylabel('MSE')
+        ax[1].grid(True)
+        ax[1].axhline(y=0, color='r', linestyle='--')
+        
+        true_e = np.array(true_e)
+        vqe_e = np.array(vqe_e)
+        accuracy = np.abs((true_e-vqe_e)/true_e)
+        ax[2].fill_between(lams, 0.01, max(np.max(accuracy),0.01), color = 'r', alpha = 0.3 )
+        ax[2].fill_between(lams, .01, min(np.min(accuracy),0), color = 'green', alpha = 0.3 )
+        ax[2].axhline(y=0.01, color='r', linestyle='--')
+        ax[2].scatter(lams, accuracy)
+        ax[2].grid(True)
+        ax[2].set_title('Accuracy of VQE'.format(N,J))
+        ax[2].set_xlabel(r'$\lambda$')
+        ax[2].set_ylabel(r'$|(E_{vqe} - E_{true})/E_{true}|$')
+        
+        states = jv_vqe_state(params)
+        rho_dist = [np.mean(np.square(np.real(states[k+1] - states[k]))) for k in range(l_steps-1)]
+            
+        ax[3].set_title('Mean square distance between consecutives density matrices')
+        ax[3].plot(np.linspace(0,2*J, num=l_steps-1), rho_dist, '-o')
+        ax[3].grid(True)
+        ax[3].axvline(x=J, color='gray', linestyle='--')
+        ax[3].set_xlabel(r'$\lambda$')
+        
+        plt.tight_layout()
+        
+    ys = []
+    for l in lams:
+        ys.append(0) if l <= J else ys.append(1)
+        
+    return vqe_e, params, ys   
+
 
 #  _  _     
 # | || |    
