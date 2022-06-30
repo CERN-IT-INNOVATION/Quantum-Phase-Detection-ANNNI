@@ -1,7 +1,7 @@
-phase-estimation
-================
+src
+===
 
 .. toctree::
    :maxdepth: 4
 
-   phase-estimation
+   IsingChain

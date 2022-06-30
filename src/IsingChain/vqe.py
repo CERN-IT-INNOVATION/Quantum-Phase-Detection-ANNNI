@@ -13,8 +13,6 @@ import tqdm  # Pretty progress bars
 import joblib  # Writing and loading
 from noisyopt import minimizeSPSA
 
-import multiprocessing
-
 import warnings
 
 warnings.filterwarnings(
@@ -190,10 +188,8 @@ def vqe_train(
         if True -> Display plots
         if False -> It does not display plots
     recycle : bool
-        if True -> Each state (depending on the intensity of the magnetic field) is computed
-                   independently and in parallel.
-        if False -> Each state is trained after the previous one, in which the initial parameters
-                    are the final learnt parameters of the previous state
+        if True -> Each state (depending on the intensity of the magnetic field) is computed independently and in parallel.
+        if False -> Each state is trained after the previous one, in which the initial parameters are the final learnt parameters of the previous state
 
     Returns
     -------

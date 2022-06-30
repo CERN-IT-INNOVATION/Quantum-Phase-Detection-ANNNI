@@ -134,3 +134,5 @@ dmypy.json
 other/
 # environment folder
 qua/ 
+# Documentation
+html/

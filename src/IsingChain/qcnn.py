@@ -22,7 +22,7 @@ warnings.filterwarnings(
     message="For Hamiltonians, the eigenvalues will be computed numerically. This may be computationally intensive for a large number of wires.Consider using a sparse representation of the Hamiltonian with qml.SparseHamiltonian.",
 )
 
-import vqe as vqe
+from . import vqe as vqe
 
 ##############
 
@@ -30,18 +30,6 @@ import vqe as vqe
 def circuit_convolution(active_wires, params, N, index):
     """
     Convolution block for the QCNN
-
-    RX--RY--o--RX---------
-            |
-    RX--RY--x------o--RX--
-                   |
-    RX--RY--o--RX--x------
-            |
-    RX--RY--x------o--RX--
-                   |
-    RX--RY--o--RX--x------
-            |
-    RX--RY--x---------RX--
 
     Parameters
     ----------
@@ -86,11 +74,7 @@ def circuit_convolution(active_wires, params, N, index):
 def circuit_pooling(active_wires, params, N, index):
     """
     Pooling block for the QCNN
-
-    --MEAS--(=0)--(=1)
-             |     |
-    ---------RY----RY----
-
+    
     Parameters
     ----------
     active_wires : np.ndarray
