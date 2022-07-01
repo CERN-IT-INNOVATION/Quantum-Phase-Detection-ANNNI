@@ -18,39 +18,12 @@ warnings.filterwarnings(
     message="For Hamiltonians, the eigenvalues will be computed numerically. This may be computationally intensive for a large number of wires.Consider using a sparse representation of the Hamiltonian with qml.SparseHamiltonian.",
 )
 
+import sys, os
+sys.path.insert(0, '../../')
+import PhaseEstimation.ising_chain
+import PhaseEstimation.annni_model
+
 ##############
-
-
-def qml_build_H(N, lam, J):
-    """
-    Set up Hamiltonian:
-            H = lam*Σsigma^i_z - J*Σsigma^i_x*sigma^{i+1}
-
-    Parameters
-    ----------
-    N : int
-        Number of spins of the Ising Chain
-    lam : float
-        Strenght of (transverse) magnetic field
-    J : float
-        Interaction strenght between spins
-
-    Returns
-    -------
-    pennylane.ops.qubit.hamiltonian.Hamiltonian
-        Hamiltonian Pennylane class for the (Transverse) Ising Chain
-    """
-    # Interaction of spins with magnetic field
-    H = +lam * qml.PauliZ(0)
-    for i in range(1, N):
-        H = H + lam * qml.PauliZ(i)
-
-    # Interaction between spins:
-    for i in range(0, N - 1):
-        H = H + J * (-1) * (qml.PauliX(i) @ qml.PauliX(i + 1))
-
-    return H
-
 
 def circuit_wall_RY(N, param, index=0):
     """
@@ -147,7 +120,7 @@ def vqe_circuit(N, params):
 
 
 class vqe:
-    def __init__(self, N, J, l_steps, circuit):
+    def __init__(self, N, J, qml_Hs, circuit, labels = []):
         """
         Class for the VQE algorithm
 
@@ -157,41 +130,31 @@ class vqe:
             Number of spins in the Ising Chain / qubits of the circuit
         J : float
             Interaction strenght between spins
-        l_steps : int
-            Number of different states, namely defined by different magnetic field intensities = np.linspace(0, 2*J, l_steps)
+        qml_Hs : np.ndarray
+            Array of pennylane Hamiltonians
         circuit : function
             Function of the VQE circuit
         """
         self.N = N
         self.J = J
-        self.n_states = l_steps
+        self.n_states = len(qml_Hs)
         self.circuit = lambda p: circuit(self.N, p)
         self.n_params = self.circuit([0] * 10000)
         self.vqe_states = np.random.rand(self.n_states, self.n_params)
         self.device = qml.device("default.qubit.jax", wires=N, shots=None)
-
-        self.lams = np.linspace(0, 2 * self.J, self.n_states)
-
-        qml_Hs = []
+        self.labels = labels
+        
         mat_Hs = []
         true_e = []
-        labels = []
 
-        for i, lam in enumerate(self.lams):
-            labels.append(0) if lam <= J else labels.append(1)
-
-            H = qml_build_H(self.N, float(lam), float(self.J))
-            # Pennylane matrices
-            qml_Hs.append(H)
+        for qml_H in qml_Hs:
             # True groundstate energies
-            true_e.append(np.min(qml.eigvals(H)))
+            true_e.append(np.min(qml.eigvals(qml_H)))
             # Standard matrix for of the hamiltonians
-            mat_Hs.append(qml.matrix(H))
+            mat_Hs.append(qml.matrix(qml_H))
 
         self.true_e = jnp.array(true_e)
-        self.qml_Hs = qml_Hs
         self.mat_Hs = jnp.array(mat_Hs)
-        self.labels = labels
         self.MSE = []
         self.vqe_e = []
         self.recycle = False
@@ -213,7 +176,7 @@ class vqe:
         drawer = qml.draw(vqe_state)
         print(drawer(self))
 
-    def show_results(self):
+    def show_results_isingchain(self):
         """
         Shows results of a trained VQE run:
         > VQE enegies plot
@@ -221,13 +184,14 @@ class vqe:
         > Final relative errors
         > Mean Squared difference between final subsequent states
         """
+        lams = np.linspace(0, 2*self.J, self.n_states)
         if len(self.MSE) > 0:
             tot_plots = 3 if self.recycle else 4
             fig, ax = plt.subplots(tot_plots, 1, figsize=(12, 18.6))
 
-            ax[0].plot(self.lams, self.true_e, "--", label="True", color="red", lw=2)
-            ax[0].plot(self.lams, self.vqe_e, ".", label="VQE", color="green", lw=2)
-            ax[0].plot(self.lams, self.vqe_e, color="green", lw=2, alpha=0.6)
+            ax[0].plot(lams, self.true_e, "--", label="True", color="red", lw=2)
+            ax[0].plot(lams, self.vqe_e, ".", label="VQE", color="green", lw=2)
+            ax[0].plot(lams, self.vqe_e, color="green", lw=2, alpha=0.6)
             ax[0].grid(True)
             ax[0].set_title(
                 "Ground States of Ising Hamiltonian ({0}-spins), J = {1}".format(
@@ -256,13 +220,13 @@ class vqe:
 
             accuracy = np.abs((self.true_e - self.vqe_e) / self.true_e)
             ax[k].fill_between(
-                self.lams, 0.01, max(np.max(accuracy), 0.01), color="r", alpha=0.3
+                lams, 0.01, max(np.max(accuracy), 0.01), color="r", alpha=0.3
             )
             ax[k].fill_between(
-                self.lams, 0.01, min(np.min(accuracy), 0), color="green", alpha=0.3
+                lams, 0.01, min(np.min(accuracy), 0), color="green", alpha=0.3
             )
             ax[k].axhline(y=0.01, color="r", linestyle="--")
-            ax[k].scatter(self.lams, accuracy)
+            ax[k].scatter(lams, accuracy)
             ax[k].grid(True)
             ax[k].set_title("Accuracy of VQE".format(self.N, self.J))
             ax[k].set_xlabel(r"$\lambda$")
@@ -411,11 +375,11 @@ class vqe:
             # Grad function of the MSE, used in updating the parameters
             jd_update = jax.jit(jax.grad(update))
 
-            progress = tqdm.tqdm(enumerate(self.lams), position=0, leave=True)
+            progress = tqdm.tqdm(range(self.n_states), position=0, leave=True)
             params = []
             param = jnp.array(np.random.rand(self.n_params))
             MSE = []
-            for idx, lam in progress:
+            for idx in progress:
                 MSE_idx = []
                 epochs = n_epochs if idx > 0 else n_epochs * 10
                 for it in range(epochs):
@@ -431,7 +395,7 @@ class vqe:
                             )
                         )
                 params.append(copy.copy(param))
-                progress.set_description("{0}/{1}".format(idx + 1, len(self.lams)))
+                progress.set_description("{0}/{1}".format(idx + 1, self.n_states))
                 MSE.append(MSE_idx)
             MSE = np.mean(MSE, axis=0)
             params = jnp.array(params)
@@ -463,6 +427,7 @@ class vqe:
             self.n_states,
             self.vqe_states,
             self.circuit_fun,
+            self.labels
         ]
 
         with open(filename, "wb") as f:
@@ -486,9 +451,9 @@ def load_vqe(filename):
     with open(filename, "rb") as f:
         things_to_load = pickle.load(f)
 
-    N, J, n_states, vqe_states, circuit_fun = things_to_load
+    N, J, n_states, vqe_states, circuit_fun, labels = things_to_load
 
     loaded_vqe = vqe(N, J, n_states, circuit_fun)
     loaded_vqe.vqe_states = vqe_states
-
+    loaded_vqe.labels = labels
     return loaded_vqe
