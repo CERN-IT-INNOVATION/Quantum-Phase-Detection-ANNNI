@@ -20,6 +20,14 @@ PhaseEstimation.anomaly module
    :undoc-members:
    :show-inheritance:
 
+PhaseEstimation.hamiltonians module
+-----------------------------------
+
+.. automodule:: PhaseEstimation.hamiltonians
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 PhaseEstimation.ising\_chain module
 -----------------------------------
 

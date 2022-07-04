@@ -91,6 +91,7 @@ def anomaly_circuit(N, vqe_circuit, vqe_params, params):
     """
     Building function for the circuit:
           VQE(params_vqe) + Anomaly(params)
+          
     Parameters
     ----------
     N : int
