@@ -4,7 +4,7 @@ from pennylane import numpy as np
 
 ##############
 
-def build_H(N, lam, J):
+def get_H(N, lam, J):
     """
     Set up Hamiltonian:
             H = -lam*Σsigma^i_z - J*Σsigma^i_x*sigma_x^{i+1}
@@ -34,7 +34,7 @@ def build_H(N, lam, J):
 
     return H
 
-def prepare_Hs_labels(N, J, n_states):
+def build_Hs(N, J, n_states):
     """
     Sets up np.ndarray of pennylane Hamiltonians with different instensity of magnetic field mu in np.linspace(0, 2*J, n_states)
     
@@ -52,7 +52,7 @@ def prepare_Hs_labels(N, J, n_states):
     Hs     = []
     labels = []
     for lam in lams:
-        Hs.append(build_H(int(N), float(lam), float(J)) )
+        Hs.append(get_H(int(N), float(lam), float(J)) )
         labels.append(0) if lam <= J else labels.append(1)
         
     return Hs, labels

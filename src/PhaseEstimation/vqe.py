@@ -115,46 +115,30 @@ def vqe_circuit(N, params):
     circuit_wall_CNOT(N)
     qml.Barrier()
     index = circuit_wall_RY(N, params, index)
-
+    
     return index
 
 
 class vqe:
-    def __init__(self, N, J, qml_Hs, circuit, labels = []):
+    def __init__(self, Hs, circuit):
         """
         Class for the VQE algorithm
 
         Parameters
         ----------
-        N : int
-            Number of spins in the Ising Chain / qubits of the circuit
-        J : float
-            Interaction strenght between spins
-        qml_Hs : np.ndarray
-            Array of pennylane Hamiltonians
+        Hs : class
+            Custom Hamiltonian class
         circuit : function
             Function of the VQE circuit
         """
-        self.N = N
-        self.J = J
-        self.n_states = len(qml_Hs)
+        self.N = Hs.N
+        self.J = Hs.J
+        self.Hs = Hs
+        self.n_states = Hs.n_states
         self.circuit = lambda p: circuit(self.N, p)
         self.n_params = self.circuit([0] * 10000)
         self.vqe_states = np.random.rand(self.n_states, self.n_params)
-        self.device = qml.device("default.qubit.jax", wires=N, shots=None)
-        self.labels = labels
-        
-        mat_Hs = []
-        true_e = []
-
-        for qml_H in qml_Hs:
-            # True groundstate energies
-            true_e.append(np.min(qml.eigvals(qml_H)))
-            # Standard matrix for of the hamiltonians
-            mat_Hs.append(qml.matrix(qml_H))
-
-        self.true_e = jnp.array(true_e)
-        self.mat_Hs = jnp.array(mat_Hs)
+        self.device = qml.device("default.qubit.jax", wires=self.N, shots=None)
         self.MSE = []
         self.vqe_e = []
         self.recycle = False
@@ -189,7 +173,7 @@ class vqe:
             tot_plots = 3 if self.recycle else 4
             fig, ax = plt.subplots(tot_plots, 1, figsize=(12, 18.6))
 
-            ax[0].plot(lams, self.true_e, "--", label="True", color="red", lw=2)
+            ax[0].plot(lams, self.Hs.true_e, "--", label="True", color="red", lw=2)
             ax[0].plot(lams, self.vqe_e, ".", label="VQE", color="green", lw=2)
             ax[0].plot(lams, self.vqe_e, color="green", lw=2, alpha=0.6)
             ax[0].grid(True)
@@ -218,7 +202,7 @@ class vqe:
 
                 k = 2
 
-            accuracy = np.abs((self.true_e - self.vqe_e) / self.true_e)
+            accuracy = np.abs((self.Hs.true_e - self.vqe_e) / self.Hs.true_e)
             ax[k].fill_between(
                 lams, 0.01, max(np.max(accuracy), 0.01), color="r", alpha=0.3
             )
@@ -319,7 +303,7 @@ class vqe:
         # Same function as above but returns the energies not MSE
         def v_compute_vqe_E(params):
             pred_states = v_vqe_state(params)
-            vqe_e = v_compute_E(pred_states, self.mat_Hs)
+            vqe_e = v_compute_E(pred_states, self.Hs.mat_Hs)
 
             return jnp.real(vqe_e)
 
@@ -338,7 +322,7 @@ class vqe:
             # Computes MSE of the true energies - vqe energies: function to minimize
             def update(params):
                 pred_states = v_vqe_state(params)
-                vqe_e = v_compute_E(pred_states, self.mat_Hs)
+                vqe_e = v_compute_E(pred_states, self.Hs.mat_Hs)
 
                 if reg != 0:
                     return jnp.mean(jnp.real(vqe_e)) + reg * compute_diff_states(
@@ -358,7 +342,7 @@ class vqe:
                 # I want to skip when it == 0
                 if (it + 1) % 1000 == 0:
                     MSE.append(
-                        jnp.mean(jnp.square(j_v_compute_vqe_E(params) - self.true_e))
+                        jnp.mean(jnp.square(j_v_compute_vqe_E(params) - self.Hs.true_e))
                     )
 
                     # Update progress bar
@@ -366,37 +350,70 @@ class vqe:
         else:
             self.recycle = True
             # Computes MSE of the true energies - vqe energies: function to minimize
+            def update_reg(param, Hmat, reg, previous_state):
+                pred_state = j_vqe_state(param)
+                vqe_e = j_compute_E(pred_state, Hmat)
+                
+                param_diff = jnp.mean(jnp.square(jnp.real(pred_state - previous_state)))
+                
+                return jnp.real(vqe_e) + reg * param_diff
+            
             def update(param, Hmat):
                 pred_state = j_vqe_state(param)
                 vqe_e = j_compute_E(pred_state, Hmat)
-
+                
                 return jnp.real(vqe_e)
 
             # Grad function of the MSE, used in updating the parameters
+            jd_update_reg = jax.jit(jax.grad(update_reg))
             jd_update = jax.jit(jax.grad(update))
 
-            progress = tqdm.tqdm(range(self.n_states), position=0, leave=True)
+            progress = tqdm.tqdm(range(1, self.n_states), position=0, leave=True)
             params = []
             param = jnp.array(np.random.rand(self.n_params))
             MSE = []
-            for idx in progress:
+            previous_pred_states = []
+            
+            idx = 0
+            MSE_idx = []
+            for it in range(10*n_epochs):
+                param -= lr * jd_update(param, self.Hs.mat_Hs[idx])
+
+                if (it + 1) % 100 == 0:
+                    MSE_idx.append(
+                        jnp.mean(
+                            jnp.square(
+                                j_compute_vqe_E(param, self.Hs.mat_Hs[idx])
+                                - self.Hs.true_e[idx]
+                            )
+                        )
+                    )
+            previous_state = j_vqe_state(param)
+            params.append(copy.copy(param))
+            progress.set_description("{0}/{1}".format(idx + 1, self.n_states))
+            MSE.append(MSE_idx)
+            
+            for idx in (progress):
                 MSE_idx = []
-                epochs = n_epochs if idx > 0 else n_epochs * 10
-                for it in range(epochs):
-                    param -= lr * jd_update(param, self.mat_Hs[idx])
+                for it in range(n_epochs):
+                    if reg != 0:
+                        param -= lr * jd_update_reg(param, self.Hs.mat_Hs[idx], reg, previous_state)
+                    else:
+                        param -= lr * jd_update(param, self.Hs.mat_Hs[idx])
 
                     if (it + 1) % 100 == 0:
                         MSE_idx.append(
                             jnp.mean(
                                 jnp.square(
-                                    j_compute_vqe_E(param, self.mat_Hs[idx])
-                                    - self.true_e[idx]
+                                    j_compute_vqe_E(param, self.Hs.mat_Hs[idx])
+                                    - self.Hs.true_e[idx]
                                 )
                             )
                         )
                 params.append(copy.copy(param))
                 progress.set_description("{0}/{1}".format(idx + 1, self.n_states))
                 MSE.append(MSE_idx)
+                previous_state = j_vqe_state(param)
             MSE = np.mean(MSE, axis=0)
             params = jnp.array(params)
 
@@ -414,7 +431,7 @@ class vqe:
         """
         Save main parameters of the VQE class to a local file.
         Parameters saved:
-        > N, J, number of states, parameters, circuit function
+        > Hs class, vqe parameters, circuit function
 
         Parameters
         ----------
@@ -422,12 +439,9 @@ class vqe:
             Local file to save the parameters
         """
         things_to_save = [
-            self.N,
-            self.J,
-            self.n_states,
+            self.Hs,
             self.vqe_states,
-            self.circuit_fun,
-            self.labels
+            self.circuit_fun
         ]
 
         with open(filename, "wb") as f:
@@ -451,9 +465,9 @@ def load_vqe(filename):
     with open(filename, "rb") as f:
         things_to_load = pickle.load(f)
 
-    N, J, n_states, vqe_states, circuit_fun, labels = things_to_load
+    Hs, vqe_states, circuit_fun = things_to_load
 
-    loaded_vqe = vqe(N, J, n_states, circuit_fun)
+    loaded_vqe = vqe(Hs, circuit_fun)
     loaded_vqe.vqe_states = vqe_states
-    loaded_vqe.labels = labels
+    
     return loaded_vqe

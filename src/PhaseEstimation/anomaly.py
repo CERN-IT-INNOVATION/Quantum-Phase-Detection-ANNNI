@@ -50,7 +50,7 @@ def circuit_wall_RY(N, param, index=0):
     return index + N
 
 
-def circuit_anomaly_entanglement(N, wires, wires_trash):
+def circuit_anomaly_entanglement(N, wires, wires_trash, shift=0):
     """
     Applies CX between a wire and a trash wire for each
     wire/trashwire
@@ -65,18 +65,75 @@ def circuit_anomaly_entanglement(N, wires, wires_trash):
         Array of the indexes of trash qubits (np.1dsetdiff(np.arange(N),wires))
     """
     # Connection between trash wires
-    for wire, wire_next in zip(wires_trash[0::2], wires_trash[1::2]):
-        qml.CNOT(wires=[int(wire), int(wire_next)])
-    for wire, wire_next in zip(wires_trash[1::2], wires_trash[2::2]):
-        qml.CNOT(wires=[int(wire), int(wire_next)])
+    for wire in wires_trash:
+        wire_target = wire + 1 + shift
+        
+        if wire_target > wires_trash[-1]:
+            wire_target = wires_trash[0] + wire_target - wires_trash[-1] -1
+        if wire_target == wire:
+            wire_target += 1
+        if wire_target > wires_trash[-1]:
+            wire_target = wires_trash[0] + wire_target - wires_trash[-1] -1
+            
+        qml.CNOT(wires=[int(wire), int(wire_target)])
 
     # Connections wires -> trash_wires
-    for trash_idx, wire in enumerate(wires):
-        trash_idx = 0 if trash_idx > len(wires_trash) else trash_idx
+    for idx, wire in enumerate(wires):
+        trash_idx = idx + shift
+        
+        while trash_idx > len(wires_trash) - 1:
+            trash_idx = trash_idx - len(wires_trash)
+        
         qml.CNOT(wires=[int(wire), int(wires_trash[trash_idx])])
-
+        
 
 def anomaly_circuit(N, vqe_circuit, vqe_params, params):
+    """
+    Building function for the circuit:
+          VQE(params_vqe) + Anomaly(params)
+    Parameters
+    ----------
+    N : int
+        Number of qubits
+    vqe_circuit : function
+        Function of the VQE Circuit
+    vqe_params : np.ndarray
+        Array of VQE parameters (states)
+    params: np.ndarray
+        Array of parameters/rotation for the circuit
+    Returns
+    -------
+    np.ndarray
+        Index of the trash qubits
+    int
+        Number of parameters of the circuit
+    """
+    # Number of wires that will not be measured |phi>
+    n_wires = N // 2 + N % 2
+    # Number of wires that will be measured |0>^k
+    n_trash = N // 2
+
+    wires = np.concatenate(
+        (np.arange(0, n_wires // 2 + n_wires % 2), np.arange(N - n_wires // 2, N))
+    )
+    wires_trash = np.setdiff1d(np.arange(N), wires)
+
+    vqe_circuit(N, vqe_params)
+
+    # Visual Separation VQE||Anomaly
+    qml.Barrier()
+    qml.Barrier()
+    index = circuit_wall_RY(N, params)
+    circuit_anomaly_entanglement(N, wires, wires_trash)
+    qml.Barrier()
+    index = circuit_wall_RY(N, params, index)
+    circuit_anomaly_entanglement(N, wires, wires_trash)
+    qml.Barrier()
+    index = circuit_wall_RY(N, params, index)
+
+    return index        
+
+def anomaly_circuit2(N, vqe_circuit, vqe_params, params):
     """
     Building function for the circuit:
           VQE(params_vqe) + Anomaly(params)
@@ -114,12 +171,12 @@ def anomaly_circuit(N, vqe_circuit, vqe_params, params):
     # Visual Separation VQE||Anomaly
     qml.Barrier()
     qml.Barrier()
-    index = circuit_wall_RY(N, params)
-    circuit_anomaly_entanglement(N, wires, wires_trash)
-    qml.Barrier()
-    index = circuit_wall_RY(N, params, index)
-    circuit_anomaly_entanglement(N, wires, wires_trash)
-    qml.Barrier()
+    
+    index = 0
+    for shift in range(len(wires_trash)):
+        index = circuit_wall_RY(N, params, index)
+        circuit_anomaly_entanglement(N, wires, wires_trash, shift)
+        qml.Barrier()
     index = circuit_wall_RY(N, params, index)
 
     return index
@@ -134,11 +191,11 @@ class encoder:
         ----------
         vqe : class
             VQE class
-        qcnn_circuit :
-            Function of the QCNN circuit
+        encoder_circuit :
+            Function of the Encoder circuit
         """
         self.N = vqe.N
-        self.J = vqe.J
+        self.vqe = vqe
         self.n_states = vqe.n_states
         self.circuit = lambda vqe_p, enc_p: encoder_circuit(
             self.N, vqe.circuit_fun, vqe_p, enc_p
@@ -148,9 +205,7 @@ class encoder:
         self.device = vqe.device
 
         self.vqe_states = np.array(vqe.vqe_states)
-        self.lams = np.linspace(0, 2 * self.J, self.n_states)
-        self.labels = np.array(vqe.labels)
-
+        self.train_index = []
         self.circuit_fun = encoder_circuit
         self.n_wires = self.N // 2 + self.N % 2
         self.n_trash = self.N // 2
@@ -243,17 +298,11 @@ class encoder:
             plt.title("Loss of the encoder")
             plt.plot(np.arange(len(loss)) * 100, loss)
 
-    def show_compression(self, train_index=False):
+    def show_compression_isingchain(self, train_index=False):
         '''
         Shows result of compression of the Anomaly Detector
-        
-        Parameters
-        ----------
-        train_index : bool
-            If train_index is not specified (as a list) it will try to load from self.train_index
         '''
-        if not train_index:
-            train_index = self.train_index
+        train_index = self.train_index
 
         X_train = jnp.array(self.vqe_states[train_index])
         test_index = np.setdiff1d(np.arange(len(self.vqe_states)), train_index)

@@ -4,7 +4,7 @@ from pennylane import numpy as np
 
 ##############
 
-def build_H(N, L, K):
+def get_H(N, L, K):
     """
     Set up Hamiltonian:
             H = J1* (- Σsigma^i_x*sigma_x^{i+1} - (h/J1) * Σsigma^i_z - (J2/J1) * Σsigma^i_x*sigma_x^{i+2}
@@ -41,7 +41,7 @@ def build_H(N, L, K):
 
     return H
 
-def prepare_Hs(N, n_states):
+def build_Hs(N, n_states):
     """
     Sets up np.ndarray of pennylane Hamiltonians with different parameters
     total_states = n_states * n_states
@@ -63,7 +63,9 @@ def prepare_Hs(N, n_states):
     Hs = []
     for k in K_states:
         for l in L_states:
-            Hs.append(build_H(N, l, k))
+            Hs.append(get_H(int(N), float(l), float(k)))
         
+    labels = [None]*n_states
+    
     return Hs, labels
 

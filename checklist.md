@@ -2,17 +2,17 @@
 
 ## Procedure to create a new remote repository in GitHub
   
-- [ ] Check if a repository associated to your project already exists.
-- [ ] Click on `new`.
-- [ ] Add Repository name.
-- [ ] Add Description. Description must be the project's full name.
-- [ ] Be sure the repository is set to `Private`.
-- [ ] Flag `Add a README.md file`.
-- [ ] Flag `Add .gitignore` and choose the desired programming language.
-- [ ] Flag `Choose a license` and choose the desired license (choose MIT License
+- [x] Check if a repository associated to your project already exists.
+- [x] Click on `new`.
+- [x] Add Repository name.
+- [x] Add Description. Description must be the project's full name.
+- [x] Be sure the repository is set to `Private`.
+- [x] Flag `Add a README.md file`.
+- [x] Flag `Add .gitignore` and choose the desired programming language.
+- [x] Flag `Choose a license` and choose the desired license (choose MIT License
 or have a look [here](https://choosealicense.com/) if unknown).
-- [ ] Create repository.
-- [ ] Add repository topic: [procedure](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/classifying-your-repository-with-topics).
+- [x] Create repository.
+- [x] Add repository topic: [procedure](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/classifying-your-repository-with-topics).
   Choose between:
 
   - ML (classical machine learning)
@@ -46,13 +46,13 @@ The `README.md` file must contain the following sections.
 
 ## Requirements for the CODE
 
-- [ ] `requirements.txt` or `environment.yaml`(for conda) or
+- [x] `requirements.txt` or `environment.yaml`(for conda) or
 `setup.cfg + pyproject.toml` or `setup.py`
 ([setuptools](https://setuptools.pypa.io/en/latest/)).
-- [ ] `src/packagename` folder with source files.
-- [ ] Formatting: production code must be formatted with
+- [x] `src/packagename` folder with source files.
+- [x] Formatting: production code must be formatted with
 [Black](https://github.com/psf/black).
-- [ ] Function annotations: augment all functions and modules with
+- [x] Function annotations: augment all functions and modules with
 [dosctrings](https://sphinxcontrib-napoleon.readthedocs.io/en/latest/index.html).
 
 ## Requirements before PUBLISHING

@@ -174,8 +174,8 @@ class qcnn:
         qcnn_circuit :
             Function of the QCNN circuit
         """
+        self.vqe = vqe
         self.N = vqe.N
-        self.J = vqe.J
         self.n_states = vqe.n_states
         self.circuit = lambda vqe_p, qcnn_p: qcnn_circuit(
             vqe_p, vqe.circuit_fun, qcnn_p, self.N
@@ -185,9 +185,8 @@ class qcnn:
         self.device = vqe.device
 
         self.vqe_states = np.array(vqe.vqe_states)
-        self.lams = np.linspace(0, 2 * self.J, self.n_states)
-        self.labels = np.array(vqe.labels)
-
+        self.labels = np.array(vqe.Hs.labels)
+        self.train_index = []
         self.loss_train = []
         self.loss_test = []
 
@@ -288,7 +287,8 @@ class qcnn:
         self.loss_train = loss_history
         self.loss_test = loss_history_test
         self.params = params
-
+        self.train_index = train_index
+        
         if plot:
             plt.figure(figsize=(15, 5))
             plt.plot(
@@ -309,16 +309,12 @@ class qcnn:
             plt.grid(True)
             plt.legend()
 
-    def show_results(self, train_index):
+    def show_results_isingchain(self):
         """
         Plots performance of the classifier on the whole data
-
-        Parameters
-        ----------
-        train_index : np.ndarray
-            Index of training points
         """
-
+        train_index = self.train_index
+            
         @qml.qnode(self.device, interface="jax")
         def qcnn_circuit_prob(params_vqe, params):
             self.circuit(params_vqe, params)
