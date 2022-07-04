@@ -65,6 +65,7 @@ def circuit_anomaly_entanglement(N, wires, wires_trash, shift=0):
         Array of the indexes of trash qubits (np.1dsetdiff(np.arange(N),wires))
     """
     # Connection between trash wires
+    trash_uniques = []
     for wire in wires_trash:
         wire_target = wire + 1 + shift
         
@@ -75,7 +76,9 @@ def circuit_anomaly_entanglement(N, wires, wires_trash, shift=0):
         if wire_target > wires_trash[-1]:
             wire_target = wires_trash[0] + wire_target - wires_trash[-1] -1
             
-        qml.CNOT(wires=[int(wire), int(wire_target)])
+        if not [wire_target, wire] in trash_uniques:
+            qml.CNOT(wires=[int(wire), int(wire_target)])
+            trash_uniques.append([wire,wire_target])
 
     # Connections wires -> trash_wires
     for idx, wire in enumerate(wires):
