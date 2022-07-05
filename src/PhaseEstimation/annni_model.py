@@ -1,6 +1,7 @@
 """ This module implements the base function for treating ANNNI model """
 import pennylane as qml
 from pennylane import numpy as np
+import jax
 
 ##############
 
@@ -36,7 +37,6 @@ def get_H(N, L, K):
         
     # Interaction between spins (next-neighbouring):
     for i in range(0, N - 2):
-        print(i, i+2)
         H = H + K * (-1) * (qml.PauliX(i) @ qml.PauliX(i + 2))
 
     return H
@@ -65,7 +65,16 @@ def build_Hs(N, n_states):
         for l in L_states:
             Hs.append(get_H(int(N), float(l), float(k)))
         
-    labels = [None]*n_states
+    labels = [None]*n_states*n_states
     
-    return Hs, labels
-
+    recycle_rule = []
+    k = 0
+    while k < n_states:
+        recycle_rule.append(np.arange(k*n_states, (k+1)*n_states) )
+        k += 1
+        if k >= n_states:
+            break
+        recycle_rule.append(np.arange((k+1)*n_states - 1, k*n_states - 1, -1) )
+        k += 1
+        
+    return Hs, labels, np.array(recycle_rule).flatten()

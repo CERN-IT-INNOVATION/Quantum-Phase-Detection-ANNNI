@@ -6,6 +6,9 @@ import jax.numpy as jnp
 from jax import jit
 
 from matplotlib import pyplot as plt
+from matplotlib.colors import LinearSegmentedColormap
+import plotly.graph_objects as go
+import pandas as pd
 
 import copy
 import tqdm  # Pretty progress bars
@@ -132,7 +135,6 @@ class vqe:
             Function of the VQE circuit
         """
         self.N = Hs.N
-        self.J = Hs.J
         self.Hs = Hs
         self.n_states = Hs.n_states
         self.circuit = lambda p: circuit(self.N, p)
@@ -168,6 +170,11 @@ class vqe:
         > Final relative errors
         > Mean Squared difference between final subsequent states
         """
+        self.states_dist = [
+            np.mean(np.square(np.real(states[k + 1] - states[k])))
+            for k in range(self.n_states - 1)
+        ]
+        
         lams = np.linspace(0, 2*self.J, self.n_states)
         if len(self.MSE) > 0:
             tot_plots = 3 if self.recycle else 4
@@ -212,7 +219,7 @@ class vqe:
             ax[k].axhline(y=0.01, color="r", linestyle="--")
             ax[k].scatter(lams, accuracy)
             ax[k].grid(True)
-            ax[k].set_title("Accuracy of VQE".format(self.N, self.J))
+            ax[k].set_title("Accuracy of VQE".format(self.N, self.Hs.J))
             ax[k].set_xlabel(r"$\lambda$")
             ax[k].set_ylabel(r"$|(E_{vqe} - E_{true})/E_{true}|$")
 
@@ -220,16 +227,88 @@ class vqe:
                 "Mean square distance between consecutives density matrices"
             )
             ax[k + 1].plot(
-                np.linspace(0, 2 * self.J, num=self.n_states - 1),
+                np.linspace(0, 2 * self.Hs.J, num=self.n_states - 1),
                 self.states_dist,
                 "-o",
             )
             ax[k + 1].grid(True)
-            ax[k + 1].axvline(x=self.J, color="gray", linestyle="--")
+            ax[k + 1].axvline(x=self.Hs.J, color="gray", linestyle="--")
             ax[k + 1].set_xlabel(r"$\lambda$")
 
             plt.tight_layout()
 
+    def show_results_annni(self):
+        """
+        Shows results of a trained VQE run:
+        > VQE enegies plot
+        > Loss curve if VQE was trained using recycle = False
+        > Final relative errors
+        > Mean Squared difference between final neighbouring states
+        """
+        states_dist = []
+        side = int(np.sqrt(self.n_states))
+        
+        trues = np.reshape(self.Hs.true_e,(side, side) )
+        preds = np.reshape(self.vqe_e,(side, side) )
+
+        x = np.linspace(1, 0, side)
+        y = np.linspace(0, 2, side)
+        
+        fig = go.Figure(data=[go.Surface(opacity=.2, colorscale='Reds', z=trues, x=x, y=y),
+                      go.Surface(opacity=1, colorscale='Blues',z=preds, x=x, y=y)])
+
+        fig.update_layout(height=500)
+        fig.show()
+        
+        if not self.recycle:
+            plt.figure(figsize=(15,3))
+            plt.title('Loss of training set')
+            plt.plot(np.arange(len(self.MSE)+1)[1:]*1000, self.MSE)
+            plt.show()
+        
+        colors_good = np.squeeze( np.dstack((np.dstack((np.linspace(.3,0,25), np.linspace(.8,1,25))), np.linspace(1,0,25) )) )
+        colors_bad  = np.squeeze( np.dstack((np.dstack((np.linspace(1,0,100), [0]*100)), [0]*100 )) )
+
+        colors = np.vstack((colors_good, colors_bad))
+
+        cmap_acc = LinearSegmentedColormap.from_list('accuracies', colors)
+        
+        accuracy = np.rot90( np.abs(preds-trues)/np.abs(trues) )
+        
+        fig2, ax = plt.subplots(1, 2, figsize=(10, 40))
+        
+        acc = ax[0].imshow(accuracy, cmap = cmap_acc)
+        acc.set_clim(0,0.05)
+        plt.colorbar(acc, ax=ax[0], fraction=0.04)
+        ax[0].set_xlabel('L')
+        ax[0].set_ylabel('K')
+        ax[0].set_title('Relative errors')
+        
+        ax[0].set_xticks(ticks=np.linspace(0,side-1,4).astype(int), labels= np.round(x[np.linspace(side-1,0,4).astype(int)],2))
+        ax[0].set_yticks(ticks=np.linspace(0,side-1,4).astype(int), labels= np.round(y[np.linspace(side-1,0,4).astype(int)],2))
+        
+        for idx, state in enumerate(self.states):
+            neighbours = np.array([idx + 1, idx - 1, idx + side, idx - side])
+            neighbours = np.delete(neighbours, np.logical_not(np.isin(neighbours, self.Hs.recycle_rule)) )
+
+
+            if (idx + 1) % side == 0 and idx != self.n_states - 1:
+                neighbours = np.delete(neighbours, 0)
+            if (idx    ) % side == 0 and idx != 0:
+                neighbours = np.delete(neighbours, 1)
+
+            states_dist.append(np.mean(np.square([np.real(self.states[n] - state) for n in neighbours]) ) )
+
+        ax[1].set_title('Mean square difference between neighbouring states')
+        diff = ax[1].imshow(np.rot90(np.reshape(states_dist, (side,side)) ) )
+        plt.colorbar(diff, ax=ax[1], fraction=0.04)
+        ax[1].set_xlabel('L')
+        ax[1].set_ylabel('K')
+        
+        ax[1].set_xticks(ticks=np.linspace(0,side-1,4).astype(int), labels= np.round(x[np.linspace(side-1,0,4).astype(int)],2))
+        ax[1].set_yticks(ticks=np.linspace(0,side-1,4).astype(int), labels= np.round(y[np.linspace(side-1,0,4).astype(int)],2))
+        plt.tight_layout()
+        
     def train(self, lr, n_epochs, reg=0, circuit=False, recycle=True):
         """
         Training function for the VQE.
@@ -368,8 +447,8 @@ class vqe:
             jd_update_reg = jax.jit(jax.grad(update_reg))
             jd_update = jax.jit(jax.grad(update))
 
-            progress = tqdm.tqdm(range(1, self.n_states), position=0, leave=True)
-            params = []
+            progress = tqdm.tqdm(self.Hs.recycle_rule[1:], position=0, leave=True)
+            params = [[0]*self.n_params]*self.n_states
             param = jnp.array(np.random.rand(self.n_params))
             MSE = []
             previous_pred_states = []
@@ -389,7 +468,7 @@ class vqe:
                         )
                     )
             previous_state = j_vqe_state(param)
-            params.append(copy.copy(param))
+            params[idx] = copy.copy(param)
             progress.set_description("{0}/{1}".format(idx + 1, self.n_states))
             MSE.append(MSE_idx)
             
@@ -410,7 +489,7 @@ class vqe:
                                 )
                             )
                         )
-                params.append(copy.copy(param))
+                params[idx] = copy.copy(param)
                 progress.set_description("{0}/{1}".format(idx + 1, self.n_states))
                 MSE.append(MSE_idx)
                 previous_state = j_vqe_state(param)
@@ -421,11 +500,7 @@ class vqe:
         self.vqe_states = params
         self.vqe_e = j_v_compute_vqe_E(params)
 
-        states = jv_vqe_state(params)
-        self.states_dist = [
-            np.mean(np.square(np.real(states[k + 1] - states[k])))
-            for k in range(self.n_states - 1)
-        ]
+        self.states = jv_vqe_state(params)
 
     def save(self, filename):
         """
