@@ -52,10 +52,9 @@ def circuit_wall_RY(N, param, index=0):
 
     return index + N
 
-
-def circuit_wall_RYRX(N, param, index=0):
+def circuit_wall_RX(N, param, index=0):
     """
-    Apply independent RX & RY rotations to each wire in a Pennylane circuit
+    Apply independent RX rotations to each wire in a Pennylane circuit
 
     Parameters
     ----------
@@ -71,13 +70,11 @@ def circuit_wall_RYRX(N, param, index=0):
     int
         Updated starting index of params array for further rotations
     """
-    # Apply RX and RY to each wire:
+    # Apply RY to each wire:
     for spin in range(N):
-        qml.RY(param[index + spin], wires=spin)
-        qml.RX(param[index + N + spin], wires=spin)
+        qml.RX(param[index + spin], wires=spin)
 
-    return index + 2 * N
-
+    return index + N
 
 def circuit_wall_CNOT(N):
     """
@@ -92,7 +89,54 @@ def circuit_wall_CNOT(N):
     for spin in range(0, N - 1):
         qml.CNOT(wires=[spin, spin + 1])
 
+def circuit_entX_neighbour(N, params, index = 0):
+    """ 
+    Establish entanglement between qubits using IsingXX gates
+    
+    Parameters
+    ----------
+    N : int
+        Number of qubits
+    params: np.ndarray
+        Array of parameters/rotation for the circuit
+    index: int
+        Index from where to pick the elements from the params array
 
+    Returns
+    -------
+    int
+        Updated starting index of params array for further rotations
+    """
+    # Apply entanglement to the neighbouring spins
+    for spin in range(0, N - 1):
+        qml.IsingXX(params[index + spin], wires = [spin, spin + 1])
+        
+    return index + N - 1
+
+def circuit_entX_nextneighbour(N, params, index = 0):
+    """ 
+    Establish entanglement between qubits using IsingXX gates
+    
+    Parameters
+    ----------
+    N : int
+        Number of qubits
+    params: np.ndarray
+        Array of parameters/rotation for the circuit
+    index: int
+        Index from where to pick the elements from the params array
+
+    Returns
+    -------
+    int
+        Updated starting index of params array for further rotations
+    """
+    # Apply entanglement to the neighbouring spins
+    for spin in range(0, N - 2):
+        qml.IsingXX(params[index + spin], wires = [spin, spin + 2])
+        
+    return index + N - 2
+    
 def vqe_circuit(N, params):
     """
     Full VQE circuit
@@ -117,6 +161,64 @@ def vqe_circuit(N, params):
     qml.Barrier()
     circuit_wall_CNOT(N)
     qml.Barrier()
+    index = circuit_wall_RY(N, params, index)
+    
+    return index
+
+def vqe_circuit_ising(N, params):
+    """
+    Full VQE circuit
+
+    Parameters
+    ----------
+    N : int
+        Number of qubits
+    params: np.ndarray
+        Array of parameters/rotation for the circuit
+
+    Returns
+    -------
+    int
+        Total number of parameters needed to build this circuit
+    """
+    index = circuit_wall_RY(N, params)
+    qml.Barrier()
+    index = circuit_entX_neighbour(N, params, index)
+    qml.Barrier()
+    index = circuit_wall_RY(N, params, index)
+    qml.Barrier()
+    index = circuit_entX_neighbour(N, params, index)
+    qml.Barrier()
+    index = circuit_wall_RY(N, params, index)
+    
+    return index
+
+def vqe_circuit_annni(N, params):
+    """
+    Full VQE circuit
+
+    Parameters
+    ----------
+    N : int
+        Number of qubits
+    params: np.ndarray
+        Array of parameters/rotation for the circuit
+
+    Returns
+    -------
+    int
+        Total number of parameters needed to build this circuit
+    """
+    index = circuit_wall_RY(N, params)
+    qml.Barrier()
+    index = circuit_entX_neighbour(N, params, index)
+    qml.Barrier()
+    index = circuit_wall_RY(N, params, index)
+    qml.Barrier()
+    index = circuit_entX_nextneighbour(N, params, index)
+    qml.Barrier()
+    index = circuit_wall_RY(N, params, index)
+    index = circuit_wall_RX(N, params, index)
     index = circuit_wall_RY(N, params, index)
     
     return index
@@ -171,11 +273,11 @@ class vqe:
         > Mean Squared difference between final subsequent states
         """
         self.states_dist = [
-            np.mean(np.square(np.real(states[k + 1] - states[k])))
+            np.mean(np.square(np.real(self.states[k + 1] - self.states[k])))
             for k in range(self.n_states - 1)
         ]
         
-        lams = np.linspace(0, 2*self.J, self.n_states)
+        lams = np.linspace(0, 2*self.Hs.J, self.n_states)
         if len(self.MSE) > 0:
             tot_plots = 3 if self.recycle else 4
             fig, ax = plt.subplots(tot_plots, 1, figsize=(12, 18.6))
@@ -186,7 +288,7 @@ class vqe:
             ax[0].grid(True)
             ax[0].set_title(
                 "Ground States of Ising Hamiltonian ({0}-spins), J = {1}".format(
-                    self.N, self.J
+                    self.N, self.Hs.J
                 )
             )
             ax[0].set_xlabel(r"$\lambda$")
@@ -309,7 +411,7 @@ class vqe:
         ax[1].set_yticks(ticks=np.linspace(0,side-1,4).astype(int), labels= np.round(y[np.linspace(side-1,0,4).astype(int)],2))
         plt.tight_layout()
         
-    def train(self, lr, n_epochs, reg=0, circuit=False, recycle=True):
+    def train(self, lr, n_epochs, reg=0, circuit=False, recycle=True, lr_decay = 1):
         """
         Training function for the VQE.
 
@@ -420,6 +522,7 @@ class vqe:
                 params -= lr * jd_update(params)
                 # I want to skip when it == 0
                 if (it + 1) % 1000 == 0:
+                    lr = lr_decay * lr
                     MSE.append(
                         jnp.mean(jnp.square(j_v_compute_vqe_E(params) - self.Hs.true_e))
                     )

@@ -136,3 +136,5 @@ other/
 qua/ 
 # Documentation
 html/
+# Large filess
+*.pkl
