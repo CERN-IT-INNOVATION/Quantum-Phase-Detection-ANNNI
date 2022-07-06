@@ -4,7 +4,7 @@ from pennylane import numpy as np
 import jax
 import jax.numpy as jnp
 from jax import jit
-from functools import partial
+from jax.example_libraries import optimizers
 
 from matplotlib import pyplot as plt
 
@@ -282,13 +282,23 @@ class encoder:
             lambda p: jnp.sum(v_encoder_circuit(p, X_train), axis=1)
             / len(self.wires_trash)
         )
-
+        
+        def update(params, opt_state):
+            grads = jd_compress(params)
+            opt_state = opt_update(0, grads, opt_state)
+            
+            return get_params(opt_state), opt_state
+        
         params = copy.copy(self.params)
+        
+        # Defining an optimizer in Jax
+        opt_init, opt_update, get_params = optimizers.adam(lr)
+        opt_state = opt_init(params)
 
         loss = []
         progress = tqdm.tqdm(range(n_epochs), position=0, leave=True)
         for epoch in range(n_epochs):
-            params -= lr * jd_compress(params)
+            params, opt_state = update(params, opt_state)
 
             if (epoch + 1) % 100 == 0:
                 loss.append(j_compress(params))
