@@ -4,6 +4,7 @@ from pennylane import numpy as np
 import jax
 import jax.numpy as jnp
 from jax import jit
+from jax.example_libraries import optimizers
 
 from matplotlib import pyplot as plt
 
@@ -23,7 +24,6 @@ sys.path.insert(0, '../../')
 import PhaseEstimation.vqe
 
 ##############
-
 
 def circuit_convolution(active_wires, params, N, index):
     """
@@ -260,6 +260,12 @@ class qcnn:
             jax.grad(lambda p: compute_cross_entropy(X_train, Y_train, p))
         )
 
+        def update(params, opt_state):
+            grads = d_compute_cross_entropy(params)
+            opt_state = opt_update(0, grads, opt_state)
+            
+            return get_params(opt_state), opt_state
+        
         # Compute Loss of whole sets
         train_compute_cross_entropy = jax.jit(
             lambda p: compute_cross_entropy(X_train, Y_train, p)
@@ -272,10 +278,14 @@ class qcnn:
 
         progress = tqdm.tqdm(range(n_epochs), position=0, leave=True)
 
+        # Defining an optimizer in Jax
+        opt_init, opt_update, get_params = optimizers.adam(lr)
+        opt_state = opt_init(params)
+        
         loss_history = []
         loss_history_test = []
         for epoch in range(n_epochs):
-            params -= lr * d_compute_cross_entropy(params)
+            params, opt_state = update(params, opt_state)
 
             if epoch % 100 == 0:
                 loss_history.append(train_compute_cross_entropy(params))

@@ -4,6 +4,7 @@ from pennylane import numpy as np
 import jax
 import jax.numpy as jnp
 from jax import jit
+from jax.example_libraries import optimizers
 
 from matplotlib import pyplot as plt
 from matplotlib.colors import LinearSegmentedColormap
@@ -278,66 +279,66 @@ class vqe:
         ]
         
         lams = np.linspace(0, 2*self.Hs.J, self.n_states)
-        if len(self.MSE) > 0:
-            tot_plots = 3 if self.recycle else 4
-            fig, ax = plt.subplots(tot_plots, 1, figsize=(12, 18.6))
+        
+        tot_plots = 3 if self.recycle else 4
+        fig, ax = plt.subplots(tot_plots, 1, figsize=(12, 18.6))
 
-            ax[0].plot(lams, self.Hs.true_e, "--", label="True", color="red", lw=2)
-            ax[0].plot(lams, self.vqe_e, ".", label="VQE", color="green", lw=2)
-            ax[0].plot(lams, self.vqe_e, color="green", lw=2, alpha=0.6)
-            ax[0].grid(True)
-            ax[0].set_title(
-                "Ground States of Ising Hamiltonian ({0}-spins), J = {1}".format(
-                    self.N, self.Hs.J
-                )
+        ax[0].plot(lams, self.Hs.true_e, "--", label="True", color="red", lw=2)
+        ax[0].plot(lams, self.vqe_e, ".", label="VQE", color="green", lw=2)
+        ax[0].plot(lams, self.vqe_e, color="green", lw=2, alpha=0.6)
+        ax[0].grid(True)
+        ax[0].set_title(
+            "Ground States of Ising Hamiltonian ({0}-spins), J = {1}".format(
+                self.N, self.Hs.J
             )
-            ax[0].set_xlabel(r"$\lambda$")
-            ax[0].set_ylabel(r"$E(\lambda)$")
-            ax[0].legend()
+        )
+        ax[0].set_xlabel(r"$\lambda$")
+        ax[0].set_ylabel(r"$E(\lambda)$")
+        ax[0].legend()
 
-            k = 1
-            if not self.recycle:
-                ax[1].plot(
-                    np.arange(len(self.MSE)) * 1000, self.MSE, ".", color="orange", ms=7
-                )
-                ax[1].plot(
-                    np.arange(len(self.MSE)) * 1000, self.MSE, color="orange", alpha=0.4
-                )
-                ax[1].set_title("Convergence of VQE")
-                ax[1].set_xlabel("Epoch")
-                ax[1].set_ylabel("MSE")
-                ax[1].grid(True)
-                ax[1].axhline(y=0, color="r", linestyle="--")
-
-                k = 2
-
-            accuracy = np.abs((self.Hs.true_e - self.vqe_e) / self.Hs.true_e)
-            ax[k].fill_between(
-                lams, 0.01, max(np.max(accuracy), 0.01), color="r", alpha=0.3
+        k = 1
+        if not self.recycle:
+            ax[1].plot(
+                np.arange(len(self.MSE)) * 100, self.MSE, ".", color="orange", ms=7
             )
-            ax[k].fill_between(
-                lams, 0.01, min(np.min(accuracy), 0), color="green", alpha=0.3
+            ax[1].plot(
+                np.arange(len(self.MSE)) * 100, self.MSE, color="orange", alpha=0.4
             )
-            ax[k].axhline(y=0.01, color="r", linestyle="--")
-            ax[k].scatter(lams, accuracy)
-            ax[k].grid(True)
-            ax[k].set_title("Accuracy of VQE".format(self.N, self.Hs.J))
-            ax[k].set_xlabel(r"$\lambda$")
-            ax[k].set_ylabel(r"$|(E_{vqe} - E_{true})/E_{true}|$")
+            ax[1].set_title("Convergence of VQE")
+            ax[1].set_xlabel("Epoch")
+            ax[1].set_ylabel("MSE")
+            ax[1].grid(True)
+            ax[1].axhline(y=0, color="r", linestyle="--")
 
-            ax[k + 1].set_title(
-                "Mean square distance between consecutives density matrices"
-            )
-            ax[k + 1].plot(
-                np.linspace(0, 2 * self.Hs.J, num=self.n_states - 1),
-                self.states_dist,
-                "-o",
-            )
-            ax[k + 1].grid(True)
-            ax[k + 1].axvline(x=self.Hs.J, color="gray", linestyle="--")
-            ax[k + 1].set_xlabel(r"$\lambda$")
+            k = 2
 
-            plt.tight_layout()
+        accuracy = np.abs((self.Hs.true_e - self.vqe_e) / self.Hs.true_e)
+        ax[k].fill_between(
+            lams, 0.01, max(np.max(accuracy), 0.01), color="r", alpha=0.3
+        )
+        ax[k].fill_between(
+            lams, 0.01, min(np.min(accuracy), 0), color="green", alpha=0.3
+        )
+        ax[k].axhline(y=0.01, color="r", linestyle="--")
+        ax[k].scatter(lams, accuracy)
+        ax[k].grid(True)
+        ax[k].set_title("Accuracy of VQE".format(self.N, self.Hs.J))
+        ax[k].set_xlabel(r"$\lambda$")
+        ax[k].set_ylabel(r"$|(E_{vqe} - E_{true})/E_{true}|$")
+
+        ax[k + 1].set_title(
+            "Mean square distance between consecutives density matrices"
+        )
+        ax[k + 1].plot(
+            np.linspace(0, 2 * self.Hs.J, num=self.n_states - 1),
+            self.states_dist,
+            "-o",
+        )
+        ax[k + 1].grid(True)
+        ax[k + 1].axvline(x=self.Hs.J, color="gray", linestyle="--")
+        ax[k + 1].set_xlabel(r"$\lambda$")
+
+        plt.tight_layout()
 
     def show_results_annni(self):
         """
@@ -411,7 +412,7 @@ class vqe:
         ax[1].set_yticks(ticks=np.linspace(0,side-1,4).astype(int), labels= np.round(y[np.linspace(side-1,0,4).astype(int)],2))
         plt.tight_layout()
         
-    def train(self, lr, n_epochs, reg=0, circuit=False, recycle=True, lr_decay = 1):
+    def train(self, lr, n_epochs, reg=0, circuit=False, recycle=True):
         """
         Training function for the VQE.
 
@@ -501,7 +502,7 @@ class vqe:
                 return jnp.mean(jnp.square(jnp.diff(jnp.real(states), axis=1)))
 
             # Computes MSE of the true energies - vqe energies: function to minimize
-            def update(params):
+            def loss(params):
                 pred_states = v_vqe_state(params)
                 vqe_e = v_compute_E(pred_states, self.Hs.mat_Hs)
 
@@ -513,16 +514,27 @@ class vqe:
                     return jnp.mean(jnp.real(vqe_e))
 
             # Grad function of the MSE, used in updating the parameters
-            jd_update = jax.jit(jax.grad(update))
+            jd_loss = jax.jit(jax.grad(loss))
+            
+            def update(params, opt_state):
+                grads = jd_loss(params)
+                opt_state = opt_update(0, grads, opt_state)
+                
+                return get_params(opt_state), opt_state 
 
             progress = tqdm.tqdm(range(n_epochs), position=0, leave=True)
 
             MSE = []
+            
+            # Defining an optimizer in Jax
+            opt_init, opt_update, get_params = optimizers.adam(lr)
+            opt_state = opt_init(params)
+            
             for it in progress:
-                params -= lr * jd_update(params)
+                params, opt_state = update(params, opt_state)
+                
                 # I want to skip when it == 0
-                if (it + 1) % 1000 == 0:
-                    lr = lr_decay * lr
+                if (it + 1) % 100 == 0:
                     MSE.append(
                         jnp.mean(jnp.square(j_v_compute_vqe_E(params) - self.Hs.true_e))
                     )
@@ -531,8 +543,9 @@ class vqe:
                     progress.set_description("Cost: {0}".format(MSE[-1]))
         else:
             self.recycle = True
+            
             # Computes MSE of the true energies - vqe energies: function to minimize
-            def update_reg(param, Hmat, reg, previous_state):
+            def loss_reg(param, Hmat, reg, previous_state):
                 pred_state = j_vqe_state(param)
                 vqe_e = j_compute_E(pred_state, Hmat)
                 
@@ -540,63 +553,58 @@ class vqe:
                 
                 return jnp.real(vqe_e) + reg * param_diff
             
-            def update(param, Hmat):
+            def loss(param, Hmat):
                 pred_state = j_vqe_state(param)
                 vqe_e = j_compute_E(pred_state, Hmat)
                 
                 return jnp.real(vqe_e)
 
             # Grad function of the MSE, used in updating the parameters
-            jd_update_reg = jax.jit(jax.grad(update_reg))
-            jd_update = jax.jit(jax.grad(update))
+            jd_loss_reg = jax.jit(jax.grad(loss_reg))
+            jd_loss = jax.jit(jax.grad(loss))
+            
+            def update(param, opt_state, Hmat):
+                grads = jd_loss(param, Hmat)
+                opt_state = opt_update(0, grads, opt_state)
+                
+                return get_params(opt_state), opt_state 
+            
+            def update_reg(param, opt_state, Hmat, reg, previous_state):
+                grads = jd_loss_reg(param, Hmat, reg, previous_state)
+                opt_state = opt_update(0, grads, opt_state)
+                
+                return get_params(opt_state), opt_state 
 
             progress = tqdm.tqdm(self.Hs.recycle_rule[1:], position=0, leave=True)
             params = [[0]*self.n_params]*self.n_states
             param = jnp.array(np.random.rand(self.n_params))
+            
             MSE = []
             previous_pred_states = []
             
             idx = 0
-            MSE_idx = []
+            
+            # Defining an optimizer in Jax
+            opt_init, opt_update, get_params = optimizers.adam(lr)
+            opt_state = opt_init(param)
+            
             for it in range(10*n_epochs):
-                param -= lr * jd_update(param, self.Hs.mat_Hs[idx])
-
-                if (it + 1) % 100 == 0:
-                    MSE_idx.append(
-                        jnp.mean(
-                            jnp.square(
-                                j_compute_vqe_E(param, self.Hs.mat_Hs[idx])
-                                - self.Hs.true_e[idx]
-                            )
-                        )
-                    )
+                param, opt_state = update(param, opt_state, self.Hs.mat_Hs[idx])
+                
             previous_state = j_vqe_state(param)
             params[idx] = copy.copy(param)
             progress.set_description("{0}/{1}".format(idx + 1, self.n_states))
-            MSE.append(MSE_idx)
             
             for idx in (progress):
-                MSE_idx = []
+                opt_init, opt_update, get_params = optimizers.adam(lr)
+                opt_state = opt_init(param)
+                
                 for it in range(n_epochs):
-                    if reg != 0:
-                        param -= lr * jd_update_reg(param, self.Hs.mat_Hs[idx], reg, previous_state)
-                    else:
-                        param -= lr * jd_update(param, self.Hs.mat_Hs[idx])
-
-                    if (it + 1) % 100 == 0:
-                        MSE_idx.append(
-                            jnp.mean(
-                                jnp.square(
-                                    j_compute_vqe_E(param, self.Hs.mat_Hs[idx])
-                                    - self.Hs.true_e[idx]
-                                )
-                            )
-                        )
+                    param, opt_state = update_reg(param, opt_state, self.Hs.mat_Hs[idx], reg, previous_state)
+                        
                 params[idx] = copy.copy(param)
                 progress.set_description("{0}/{1}".format(idx + 1, self.n_states))
-                MSE.append(MSE_idx)
                 previous_state = j_vqe_state(param)
-            MSE = np.mean(MSE, axis=0)
             params = jnp.array(params)
 
         self.MSE = MSE
