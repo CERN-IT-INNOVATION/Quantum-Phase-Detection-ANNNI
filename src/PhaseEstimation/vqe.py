@@ -10,6 +10,10 @@ from matplotlib import pyplot as plt
 from matplotlib.colors import LinearSegmentedColormap
 import plotly.graph_objects as go
 import pandas as pd
+from orqviz.scans import perform_2D_scan, plot_2D_scan_result
+from orqviz.pca import (get_pca, perform_2D_pca_scan, plot_pca_landscape, 
+                        plot_optimization_trajectory_on_pca)
+
 
 import copy
 import tqdm  # Pretty progress bars
@@ -218,6 +222,14 @@ def vqe_circuit_annni(N, params):
     qml.Barrier()
     index = circuit_entX_nextneighbour(N, params, index)
     qml.Barrier()
+    index = circuit_wall_RY(N, params,index)
+    qml.Barrier()
+    index = circuit_entX_neighbour(N, params, index)
+    qml.Barrier()
+    index = circuit_wall_RY(N, params, index)
+    qml.Barrier()
+    index = circuit_entX_nextneighbour(N, params, index)
+    qml.Barrier()
     index = circuit_wall_RY(N, params, index)
     index = circuit_wall_RX(N, params, index)
     index = circuit_wall_RY(N, params, index)
@@ -242,7 +254,7 @@ class vqe:
         self.n_states = Hs.n_states
         self.circuit = lambda p: circuit(self.N, p)
         self.n_params = self.circuit([0] * 10000)
-        self.vqe_states = np.random.rand(self.n_states, self.n_params)
+        self.vqe_states = jnp.array(np.tile(np.random.rand(self.n_params), (self.n_states, 1)))
         self.device = qml.device("default.qubit.jax", wires=self.N, shots=None)
         self.MSE = []
         self.vqe_e = []
@@ -366,7 +378,7 @@ class vqe:
         if not self.recycle:
             plt.figure(figsize=(15,3))
             plt.title('Loss of training set')
-            plt.plot(np.arange(len(self.MSE)+1)[1:]*1000, self.MSE)
+            plt.plot(np.arange(len(self.MSE)+1)[1:]*100, self.MSE)
             plt.show()
         
         colors_good = np.squeeze( np.dstack((np.dstack((np.linspace(.3,0,25), np.linspace(.8,1,25))), np.linspace(1,0,25) )) )
@@ -412,6 +424,36 @@ class vqe:
         ax[1].set_yticks(ticks=np.linspace(0,side-1,4).astype(int), labels= np.round(y[np.linspace(side-1,0,4).astype(int)],2))
         plt.tight_layout()
         
+    def show_trajectory(self, idx):
+        def loss(params):
+            @qml.qnode(self.device, interface="jax")
+            def vqe_state(vqe_params):
+                self.circuit(vqe_params)
+
+                return qml.state()
+
+            pred_state = vqe_state(params)
+            vqe_e = jnp.conj(pred_state) @ self.Hs.mat_Hs[idx] @ pred_state
+
+            return jnp.real(vqe_e)
+
+        trajs = []
+        for traj in self.trajectory:
+            trajs.append(traj[idx])
+
+        dir1 = np.array([1., 0.])
+        dir2 = np.array([0., 1.])
+
+        pca = get_pca(trajs)
+        scan_pca_result = perform_2D_pca_scan(pca, loss, n_steps_x=30)
+
+        fig, ax = plt.subplots()
+        plot_pca_landscape(scan_pca_result, pca, fig=fig, ax=ax)
+        plot_optimization_trajectory_on_pca(trajs, pca, ax=ax, 
+                                            label="Optimization Trajectory", color="lightsteelblue")
+        plt.legend()
+        plt.show()
+
     def train(self, lr, n_epochs, reg=0, circuit=False, recycle=True):
         """
         Training function for the VQE.
@@ -493,7 +535,7 @@ class vqe:
 
         # Prepare initial parameters randomly for each datapoint/state
         # We start from the same datapoint
-        params = jnp.array(np.tile(np.random.rand(self.n_params), (self.n_states, 1)))
+        params = copy.copy(self.vqe_states)
 
         if not recycle:
             self.recycle = False
@@ -525,6 +567,7 @@ class vqe:
             progress = tqdm.tqdm(range(n_epochs), position=0, leave=True)
 
             MSE = []
+            self.trajectory = []
             
             # Defining an optimizer in Jax
             opt_init, opt_update, get_params = optimizers.adam(lr)
@@ -541,6 +584,8 @@ class vqe:
 
                     # Update progress bar
                     progress.set_description("Cost: {0}".format(MSE[-1]))
+                    
+                self.trajectory.append(params)
         else:
             self.recycle = True
             
