@@ -7,7 +7,7 @@ from jax import jit
 from jax.example_libraries import optimizers
 
 from matplotlib import pyplot as plt
-from matplotlib.colors import LinearSegmentedColormap
+from matplotlib.colors import LinearSegmentedColormap, LogNorm, Normalize
 import plotly.graph_objects as go
 import pandas as pd
 from orqviz.scans import perform_2D_scan, plot_2D_scan_result
@@ -352,7 +352,7 @@ class vqe:
 
         plt.tight_layout()
 
-    def show_results_annni(self):
+    def show_results_annni(self, log_heatmap = False):
         """
         Shows results of a trained VQE run:
         > VQE enegies plot
@@ -381,20 +381,25 @@ class vqe:
             plt.plot(np.arange(len(self.MSE)+1)[1:]*100, self.MSE)
             plt.show()
         
-        colors_good = np.squeeze( np.dstack((np.dstack((np.linspace(.3,0,25), np.linspace(.8,1,25))), np.linspace(1,0,25) )) )
-        colors_bad  = np.squeeze( np.dstack((np.dstack((np.linspace(1,0,100), [0]*100)), [0]*100 )) )
-
-        colors = np.vstack((colors_good, colors_bad))
-
-        cmap_acc = LinearSegmentedColormap.from_list('accuracies', colors)
-        
         accuracy = np.rot90( np.abs(preds-trues)/np.abs(trues) )
         
         fig2, ax = plt.subplots(1, 2, figsize=(10, 40))
         
-        acc = ax[0].imshow(accuracy, cmap = cmap_acc)
-        acc.set_clim(0,0.05)
-        plt.colorbar(acc, ax=ax[0], fraction=0.04)
+        if not log_heatmap:
+            colors_good = np.squeeze( np.dstack((np.dstack((np.linspace(.3,0,25), np.linspace(.8,1,25))), np.linspace(1,0,25) )) )
+            colors_bad  = np.squeeze( np.dstack((np.dstack((np.linspace(1,0,100), [0]*100)), [0]*100 )) )
+            colors = np.vstack((colors_good, colors_bad))
+            cmap_acc = LinearSegmentedColormap.from_list('accuracies', colors)
+
+            acc = ax[0].imshow(accuracy, cmap = cmap_acc)
+            acc.set_clim(0,0.05)
+            plt.colorbar(acc, ax=ax[0], fraction=0.04)
+        else:
+            colors = np.squeeze( np.dstack((np.dstack((np.linspace(0,1,75), np.linspace(1,0,75))), np.linspace(0,0,75) )) )
+            cmap_acc = LinearSegmentedColormap.from_list('accuracies', colors)
+            acc = ax[0].imshow(accuracy, cmap = cmap_acc, norm=LogNorm())
+            plt.colorbar(acc, ax=ax[0], fraction=0.04)
+        
         ax[0].set_xlabel('L')
         ax[0].set_ylabel('K')
         ax[0].set_title('Relative errors')
