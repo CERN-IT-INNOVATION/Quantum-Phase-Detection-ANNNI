@@ -7,9 +7,13 @@ from jax import jit
 from jax.example_libraries import optimizers
 
 from matplotlib import pyplot as plt
-from matplotlib.colors import LinearSegmentedColormap
+from matplotlib.colors import LinearSegmentedColormap, LogNorm, Normalize
 import plotly.graph_objects as go
 import pandas as pd
+from orqviz.scans import perform_2D_scan, plot_2D_scan_result
+from orqviz.pca import (get_pca, perform_2D_pca_scan, plot_pca_landscape, 
+                        plot_optimization_trajectory_on_pca)
+
 
 import copy
 import tqdm  # Pretty progress bars
@@ -24,121 +28,11 @@ warnings.filterwarnings(
 
 import sys, os
 sys.path.insert(0, '../../')
-import PhaseEstimation.ising_chain
-import PhaseEstimation.annni_model
+import PhaseEstimation.circuits as circuits
 
 ##############
 
-def circuit_wall_RY(N, param, index=0):
-    """
-    Apply independent RY rotations to each wire in a Pennylane circuit
-
-    Parameters
-    ----------
-    N : int
-        Number of qubits
-    params: np.ndarray
-        Array of parameters/rotation for the circuit
-    index: int
-        Index from where to pick the elements from the params array
-
-    Returns
-    -------
-    int
-        Updated starting index of params array for further rotations
-    """
-    # Apply RY to each wire:
-    for spin in range(N):
-        qml.RY(param[index + spin], wires=spin)
-
-    return index + N
-
-def circuit_wall_RX(N, param, index=0):
-    """
-    Apply independent RX rotations to each wire in a Pennylane circuit
-
-    Parameters
-    ----------
-    N : int
-        Number of qubits
-    params: np.ndarray
-        Array of parameters/rotation for the circuit
-    index: int
-        Index from where to pick the elements from the params array
-
-    Returns
-    -------
-    int
-        Updated starting index of params array for further rotations
-    """
-    # Apply RY to each wire:
-    for spin in range(N):
-        qml.RX(param[index + spin], wires=spin)
-
-    return index + N
-
-def circuit_wall_CNOT(N):
-    """
-    Apply CNOTs to every neighbouring qubits
-
-    Parameters
-    ----------
-    N : int
-        Number of qubits
-    """
-    # Apply entanglement to the neighbouring spins
-    for spin in range(0, N - 1):
-        qml.CNOT(wires=[spin, spin + 1])
-
-def circuit_entX_neighbour(N, params, index = 0):
-    """ 
-    Establish entanglement between qubits using IsingXX gates
-    
-    Parameters
-    ----------
-    N : int
-        Number of qubits
-    params: np.ndarray
-        Array of parameters/rotation for the circuit
-    index: int
-        Index from where to pick the elements from the params array
-
-    Returns
-    -------
-    int
-        Updated starting index of params array for further rotations
-    """
-    # Apply entanglement to the neighbouring spins
-    for spin in range(0, N - 1):
-        qml.IsingXX(params[index + spin], wires = [spin, spin + 1])
-        
-    return index + N - 1
-
-def circuit_entX_nextneighbour(N, params, index = 0):
-    """ 
-    Establish entanglement between qubits using IsingXX gates
-    
-    Parameters
-    ----------
-    N : int
-        Number of qubits
-    params: np.ndarray
-        Array of parameters/rotation for the circuit
-    index: int
-        Index from where to pick the elements from the params array
-
-    Returns
-    -------
-    int
-        Updated starting index of params array for further rotations
-    """
-    # Apply entanglement to the neighbouring spins
-    for spin in range(0, N - 2):
-        qml.IsingXX(params[index + spin], wires = [spin, spin + 2])
-        
-    return index + N - 2
-    
-def vqe_circuit(N, params):
+def circuit_ising(N, params):
     """
     Full VQE circuit
 
@@ -154,19 +48,23 @@ def vqe_circuit(N, params):
     int
         Total number of parameters needed to build this circuit
     """
-    index = circuit_wall_RYRX(N, params)
+    # No wire will be measured until the end, the array of active
+    # wire will correspont to np.arange(N) throughout the whole circuit
+    active_wires = np.arange(N)
+    
+    index = circuits.wall_RY(active_wires, params)
     qml.Barrier()
-    circuit_wall_CNOT(N)
+    index = circuits.entX_neighbour(active_wires, params, index)
     qml.Barrier()
-    index = circuit_wall_RYRX(N, params, index)
+    index = circuits.wall_RY(active_wires, params, index)
     qml.Barrier()
-    circuit_wall_CNOT(N)
+    index = circuits.entX_neighbour(active_wires, params, index)
     qml.Barrier()
-    index = circuit_wall_RY(N, params, index)
+    index = circuits.wall_RY(active_wires, params, index)
     
     return index
 
-def vqe_circuit_ising(N, params):
+def circuit_annni(N, params):
     """
     Full VQE circuit
 
@@ -182,45 +80,29 @@ def vqe_circuit_ising(N, params):
     int
         Total number of parameters needed to build this circuit
     """
-    index = circuit_wall_RY(N, params)
-    qml.Barrier()
-    index = circuit_entX_neighbour(N, params, index)
-    qml.Barrier()
-    index = circuit_wall_RY(N, params, index)
-    qml.Barrier()
-    index = circuit_entX_neighbour(N, params, index)
-    qml.Barrier()
-    index = circuit_wall_RY(N, params, index)
+    # No wire will be measured until the end, the array of active
+    # wire will correspont to np.arange(N) throughout the whole circuit
+    active_wires = np.arange(N)
     
-    return index
-
-def vqe_circuit_annni(N, params):
-    """
-    Full VQE circuit
-
-    Parameters
-    ----------
-    N : int
-        Number of qubits
-    params: np.ndarray
-        Array of parameters/rotation for the circuit
-
-    Returns
-    -------
-    int
-        Total number of parameters needed to build this circuit
-    """
-    index = circuit_wall_RY(N, params)
+    index = circuits.wall_RY(active_wires, params)
     qml.Barrier()
-    index = circuit_entX_neighbour(N, params, index)
+    index = circuits.entX_neighbour(active_wires, params, index)
     qml.Barrier()
-    index = circuit_wall_RY(N, params, index)
+    index = circuits.wall_RY(active_wires, params, index)
     qml.Barrier()
-    index = circuit_entX_nextneighbour(N, params, index)
+    index = circuits.entX_nextneighbour(active_wires, params, index)
     qml.Barrier()
-    index = circuit_wall_RY(N, params, index)
-    index = circuit_wall_RX(N, params, index)
-    index = circuit_wall_RY(N, params, index)
+    index = circuits.wall_RY(active_wires, params, index)
+    qml.Barrier()
+    index = circuits.entX_neighbour(active_wires, params, index)
+    qml.Barrier()
+    index = circuits.wall_RY(active_wires, params, index)
+    qml.Barrier()
+    index = circuits.entX_nextneighbour(active_wires, params, index)
+    qml.Barrier()
+    index = circuits.wall_RY(active_wires, params, index)
+    index = circuits.wall_RX(active_wires, params, index)
+    index = circuits.wall_RY(active_wires, params, index)
     
     return index
 
@@ -242,7 +124,7 @@ class vqe:
         self.n_states = Hs.n_states
         self.circuit = lambda p: circuit(self.N, p)
         self.n_params = self.circuit([0] * 10000)
-        self.vqe_states = np.random.rand(self.n_states, self.n_params)
+        self.vqe_states = jnp.array(np.tile(np.random.rand(self.n_params), (self.n_states, 1)))
         self.device = qml.device("default.qubit.jax", wires=self.N, shots=None)
         self.MSE = []
         self.vqe_e = []
@@ -340,7 +222,7 @@ class vqe:
 
         plt.tight_layout()
 
-    def show_results_annni(self):
+    def show_results_annni(self, log_heatmap = False):
         """
         Shows results of a trained VQE run:
         > VQE enegies plot
@@ -366,23 +248,28 @@ class vqe:
         if not self.recycle:
             plt.figure(figsize=(15,3))
             plt.title('Loss of training set')
-            plt.plot(np.arange(len(self.MSE)+1)[1:]*1000, self.MSE)
+            plt.plot(np.arange(len(self.MSE)+1)[1:]*100, self.MSE)
             plt.show()
-        
-        colors_good = np.squeeze( np.dstack((np.dstack((np.linspace(.3,0,25), np.linspace(.8,1,25))), np.linspace(1,0,25) )) )
-        colors_bad  = np.squeeze( np.dstack((np.dstack((np.linspace(1,0,100), [0]*100)), [0]*100 )) )
-
-        colors = np.vstack((colors_good, colors_bad))
-
-        cmap_acc = LinearSegmentedColormap.from_list('accuracies', colors)
         
         accuracy = np.rot90( np.abs(preds-trues)/np.abs(trues) )
         
         fig2, ax = plt.subplots(1, 2, figsize=(10, 40))
         
-        acc = ax[0].imshow(accuracy, cmap = cmap_acc)
-        acc.set_clim(0,0.05)
-        plt.colorbar(acc, ax=ax[0], fraction=0.04)
+        if not log_heatmap:
+            colors_good = np.squeeze( np.dstack((np.dstack((np.linspace(.3,0,25), np.linspace(.8,1,25))), np.linspace(1,0,25) )) )
+            colors_bad  = np.squeeze( np.dstack((np.dstack((np.linspace(1,0,100), [0]*100)), [0]*100 )) )
+            colors = np.vstack((colors_good, colors_bad))
+            cmap_acc = LinearSegmentedColormap.from_list('accuracies', colors)
+
+            acc = ax[0].imshow(accuracy, cmap = cmap_acc)
+            acc.set_clim(0,0.05)
+            plt.colorbar(acc, ax=ax[0], fraction=0.04)
+        else:
+            colors = np.squeeze( np.dstack((np.dstack((np.linspace(0,1,75), np.linspace(1,0,75))), np.linspace(0,0,75) )) )
+            cmap_acc = LinearSegmentedColormap.from_list('accuracies', colors)
+            acc = ax[0].imshow(accuracy, cmap = cmap_acc, norm=LogNorm())
+            plt.colorbar(acc, ax=ax[0], fraction=0.04)
+        
         ax[0].set_xlabel('L')
         ax[0].set_ylabel('K')
         ax[0].set_title('Relative errors')
@@ -412,7 +299,37 @@ class vqe:
         ax[1].set_yticks(ticks=np.linspace(0,side-1,4).astype(int), labels= np.round(y[np.linspace(side-1,0,4).astype(int)],2))
         plt.tight_layout()
         
-    def train(self, lr, n_epochs, reg=0, circuit=False, recycle=True):
+    def show_trajectory(self, idx):
+        def loss(params):
+            @qml.qnode(self.device, interface="jax")
+            def vqe_state(vqe_params):
+                self.circuit(vqe_params)
+
+                return qml.state()
+
+            pred_state = vqe_state(params)
+            vqe_e = jnp.conj(pred_state) @ self.Hs.mat_Hs[idx] @ pred_state
+
+            return jnp.real(vqe_e)
+
+        trajs = []
+        for traj in self.trajectory:
+            trajs.append(traj[idx])
+
+        dir1 = np.array([1., 0.])
+        dir2 = np.array([0., 1.])
+
+        pca = get_pca(trajs)
+        scan_pca_result = perform_2D_pca_scan(pca, loss, n_steps_x=30)
+
+        fig, ax = plt.subplots()
+        plot_pca_landscape(scan_pca_result, pca, fig=fig, ax=ax)
+        plot_optimization_trajectory_on_pca(trajs, pca, ax=ax, 
+                                            label="Optimization Trajectory", color="lightsteelblue")
+        plt.legend()
+        plt.show()
+
+    def train(self, lr, n_epochs, reg=0, circuit=False, recycle=True, save_trajectories = False, epochs_batch_size = 500):
         """
         Training function for the VQE.
 
@@ -493,10 +410,11 @@ class vqe:
 
         # Prepare initial parameters randomly for each datapoint/state
         # We start from the same datapoint
-        params = jnp.array(np.tile(np.random.rand(self.n_params), (self.n_states, 1)))
+        params = copy.copy(self.vqe_states)
 
         if not recycle:
             self.recycle = False
+            oom = False
             # Regularizator of the optimizer
             def compute_diff_states(states):
                 return jnp.mean(jnp.square(jnp.diff(jnp.real(states), axis=1)))
@@ -525,6 +443,7 @@ class vqe:
             progress = tqdm.tqdm(range(n_epochs), position=0, leave=True)
 
             MSE = []
+            self.trajectory = []
             
             # Defining an optimizer in Jax
             opt_init, opt_update, get_params = optimizers.adam(lr)
@@ -534,16 +453,30 @@ class vqe:
                 params, opt_state = update(params, opt_state)
                 
                 # I want to skip when it == 0
-                if (it + 1) % 100 == 0:
-                    MSE.append(
-                        jnp.mean(jnp.square(j_v_compute_vqe_E(params) - self.Hs.true_e))
-                    )
+                if (it + 1) % epochs_batch_size == 0:
+                    if not oom:
+                        try:
+                            MSE.append(
+                                jnp.mean(jnp.square(j_v_compute_vqe_E(params) - self.Hs.true_e))
+                            )
+                        except RuntimeError:
+                            oom = True
+                            MSE.append(
+                                jnp.mean(jnp.square(v_compute_vqe_E(params) - self.Hs.true_e))
+                            )
+                    else:
+                        MSE.append(
+                                jnp.mean(jnp.square(v_compute_vqe_E(params) - self.Hs.true_e))
+                            )
 
                     # Update progress bar
                     progress.set_description("Cost: {0}".format(MSE[-1]))
+                
+                if save_trajectories:
+                    self.trajectory.append(params)
         else:
             self.recycle = True
-            
+            oom = False
             # Computes MSE of the true energies - vqe energies: function to minimize
             def loss_reg(param, Hmat, reg, previous_state):
                 pred_state = j_vqe_state(param)
@@ -609,9 +542,13 @@ class vqe:
 
         self.MSE = MSE
         self.vqe_states = params
-        self.vqe_e = j_v_compute_vqe_E(params)
-
-        self.states = jv_vqe_state(params)
+        
+        if not oom:
+            self.vqe_e = j_v_compute_vqe_E(params)
+            self.states = jv_vqe_state(params)
+        else:
+            self.vqe_e = v_compute_vqe_E(params)
+            self.states = v_vqe_state(params)
 
     def save(self, filename):
         """

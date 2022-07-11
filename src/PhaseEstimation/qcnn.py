@@ -21,98 +21,11 @@ warnings.filterwarnings(
 
 import sys, os
 sys.path.insert(0, '../../')
-import PhaseEstimation.vqe
+import PhaseEstimation.circuits as circuits
 
 ##############
 
-def circuit_convolution(active_wires, params, N, index):
-    """
-    Convolution block for the QCNN
-
-    Parameters
-    ----------
-    active_wires : np.ndarray
-        Array of wires that are not measured during a previous pooling
-    params: np.ndarray
-        Array of parameters/rotation for the circuit
-    N : int
-        Number of qubits
-    index: int
-        Index from where to pick the elements from the params array
-
-    Returns
-    -------
-    int
-        Updated starting index of params array for further rotations
-    """
-    if len(active_wires) > 1:
-        # Convolution:
-        for wire in active_wires:
-            qml.RX(params[index], wires=int(wire))
-            qml.RY(params[index + 1], wires=int(wire))
-            index = index + 2
-
-        # ---- > Establish entanglement: odd connections
-        for wire, wire_next in zip(active_wires[0::2], active_wires[1::2]):
-            qml.CNOT(wires=[int(wire), int(wire_next)])
-            qml.RX(params[index], wires=int(wire))
-            index = index + 1
-
-        # ---- > Establish entanglement: even connections
-        for wire, wire_next in zip(active_wires[1::2], active_wires[2::2]):
-            qml.CNOT(wires=[int(wire), int(wire_next)])
-            qml.RX(params[index], wires=int(wire))
-            index = index + 1
-
-    qml.RX(params[index], wires=N - 1)
-
-    return index + 1
-
-
-def circuit_pooling(active_wires, params, N, index):
-    """
-    Pooling block for the QCNN
-
-    Parameters
-    ----------
-    active_wires : np.ndarray
-        Array of wires that are not measured during a previous pooling
-    params: np.ndarray
-        Array of parameters/rotation for the circuit
-    N : int
-        Number of qubits
-    index: int
-        Index from where to pick the elements from the params array
-
-    Returns
-    -------
-    int
-        Updated starting index of params array for further rotations
-    np.ndarray
-        Updated array of active wires (not measured)
-    """
-    # Pooling:
-    isodd = True if len(active_wires) % 2 != 0 else False
-
-    for wire_meas, wire_next in zip(active_wires[0::2], active_wires[1::2]):
-        m_0 = qml.measure(int(wire_meas))
-        qml.cond(m_0 == 0, qml.RY)(params[index], wires=int(wire_next))
-        qml.cond(m_0 == 1, qml.RY)(params[index + 1], wires=int(wire_next))
-        index = index + 2
-
-        # Removing measured wires from active_wires:
-        active_wires = np.delete(active_wires, np.where(active_wires == wire_meas))
-
-    # ---- > If the number of wires is odd, the last wires is not pooled
-    #        so we apply a Y gate
-    if isodd:
-        qml.RY(params[index], wires=N - 1)
-        index = index + 1
-
-    return index, active_wires
-
-
-def qcnn_circuit(params_vqe, vqe_circuit_fun, params, N):
+def qcnn_circuit(params_vqe, vqe_circuit_fun, params, N, n_outputs):
     """
     Building function for the circuit:
           VQE(params_vqe) + QCNN(params)
@@ -148,14 +61,14 @@ def qcnn_circuit(params_vqe, vqe_circuit_fun, params, N):
     index = 0
 
     # Iterate Convolution+Pooling until we only have a single wires
-    while len(active_wires) > 1:
-        index = circuit_convolution(active_wires, params, N, index)
+    while len(active_wires) > n_outputs:
+        index = circuits.convolution(active_wires, params, index)
         qml.Barrier()
-        index, active_wires = circuit_pooling(active_wires, params, N, index)
+        index, active_wires = circuits.pooling(active_wires, qml.RY, params, index)
         qml.Barrier()
-        index = circuit_convolution(active_wires, params, N, index)
+        index = circuits.convolution(active_wires, params, index)
         qml.Barrier()
-        index, active_wires = circuit_pooling(active_wires, params, N, index)
+        index, active_wires = circuits.pooling(active_wires, qml.RY, params, index)
         qml.Barrier()
 
     # Return the number of parameters
@@ -163,7 +76,7 @@ def qcnn_circuit(params_vqe, vqe_circuit_fun, params, N):
 
 
 class qcnn:
-    def __init__(self, vqe, qcnn_circuit):
+    def __init__(self, vqe, qcnn_circuit, n_outputs = 1):
         """
         Class for the QCNN algorithm
 
@@ -178,7 +91,7 @@ class qcnn:
         self.N = vqe.N
         self.n_states = vqe.n_states
         self.circuit = lambda vqe_p, qcnn_p: qcnn_circuit(
-            vqe_p, vqe.circuit_fun, qcnn_p, self.N
+            vqe_p, vqe.circuit_fun, qcnn_p, self.N, n_outputs
         )
         self.n_params = self.circuit([0] * 10000, [0] * 10000)
         self.params = np.array([np.pi / 4] * self.n_params)

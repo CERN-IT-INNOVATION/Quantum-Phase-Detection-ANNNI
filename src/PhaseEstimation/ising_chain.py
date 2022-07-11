@@ -51,11 +51,13 @@ def build_Hs(N, J, n_states):
     
     Hs     = []
     labels = []
+    ising_params = []
     for lam in lams:
         Hs.append(get_H(int(N), float(lam), float(J)) )
         labels.append(0) if lam <= J else labels.append(1)
+        ising_params.append([N, J, lam])
         
     recycle_rule = np.arange(n_states)
     
-    return Hs, labels, recycle_rule
+    return Hs, labels, recycle_rule, ising_params
 
