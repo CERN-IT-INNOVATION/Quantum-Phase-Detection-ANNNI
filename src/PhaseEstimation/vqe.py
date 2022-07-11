@@ -146,6 +146,36 @@ class vqe:
 
         drawer = qml.draw(vqe_state)
         print(drawer(self))
+        
+    def get_fidelties(self, params, true_states = []):
+        @qml.qnode(self.device, interface="jax")
+        def vqe_state(vqe_params):
+            self.circuit(vqe_params)
+
+            return qml.state()
+        
+        def fidelty(params, true_state):
+            state = vqe_state(params)
+            fidelty = jnp.square(jnp.abs( jnp.conj(state) @  true_state))
+
+            return fidelty
+        
+        v_fidelty = jax.vmap( fidelty, in_axes = (0, 0) )
+        
+        if len(true_states) == 0:
+            def compute_true_state(H):
+                # Compute eigenvalues and eigenvectors
+                eigval, eigvec = jnp.linalg.eigh(H)
+                # Get the eigenstate to the lowest eigenvalue
+                gstate = eigvec[:,jnp.argmin(eigval)]
+
+                return gstate
+
+            jv_compute_true_state = jax.jit(jax.vmap(compute_true_state))
+            true_states = jv_compute_true_state(self.Hs.mat_Hs)
+            
+        return v_fidelty(params, true_states)
+            
 
     def show_results_isingchain(self):
         """
@@ -370,6 +400,17 @@ class vqe:
             self.circuit(vqe_params)
 
             return qml.state()
+        
+        def compute_true_state(H):
+            # Compute eigenvalues and eigenvectors
+            eigval, eigvec = jnp.linalg.eigh(H)
+            # Get the eigenstate to the lowest eigenvalue
+            gstate = eigvec[:,jnp.argmin(eigval)]
+
+            return gstate
+
+        jv_compute_true_state = jax.jit(jax.vmap(compute_true_state))
+        self.true_states = jv_compute_true_state(self.Hs.mat_Hs)
 
         # vmap of the circuit
         v_vqe_state = jax.vmap(lambda v: vqe_state(v), in_axes=(0))
@@ -415,6 +456,8 @@ class vqe:
         if not recycle:
             self.recycle = False
             oom = False
+            j_get_fidelties = jax.jit(self.get_fidelties)
+            
             # Regularizator of the optimizer
             def compute_diff_states(states):
                 return jnp.mean(jnp.square(jnp.diff(jnp.real(states), axis=1)))
@@ -470,7 +513,7 @@ class vqe:
                             )
 
                     # Update progress bar
-                    progress.set_description("Cost: {0}".format(MSE[-1]))
+                    progress.set_description("Cost: {0:.4f} | Mean F.: {1:.4f}".format(MSE[-1], np.mean(j_get_fidelties(jnp.array(params), self.true_states)).astype(float),5) )
                 
                 if save_trajectories:
                     self.trajectory.append(params)
