@@ -28,121 +28,11 @@ warnings.filterwarnings(
 
 import sys, os
 sys.path.insert(0, '../../')
-import PhaseEstimation.ising_chain
-import PhaseEstimation.annni_model
+import PhaseEstimation.circuits as circuits
 
 ##############
 
-def circuit_wall_RY(N, param, index=0):
-    """
-    Apply independent RY rotations to each wire in a Pennylane circuit
-
-    Parameters
-    ----------
-    N : int
-        Number of qubits
-    params: np.ndarray
-        Array of parameters/rotation for the circuit
-    index: int
-        Index from where to pick the elements from the params array
-
-    Returns
-    -------
-    int
-        Updated starting index of params array for further rotations
-    """
-    # Apply RY to each wire:
-    for spin in range(N):
-        qml.RY(param[index + spin], wires=spin)
-
-    return index + N
-
-def circuit_wall_RX(N, param, index=0):
-    """
-    Apply independent RX rotations to each wire in a Pennylane circuit
-
-    Parameters
-    ----------
-    N : int
-        Number of qubits
-    params: np.ndarray
-        Array of parameters/rotation for the circuit
-    index: int
-        Index from where to pick the elements from the params array
-
-    Returns
-    -------
-    int
-        Updated starting index of params array for further rotations
-    """
-    # Apply RY to each wire:
-    for spin in range(N):
-        qml.RX(param[index + spin], wires=spin)
-
-    return index + N
-
-def circuit_wall_CNOT(N):
-    """
-    Apply CNOTs to every neighbouring qubits
-
-    Parameters
-    ----------
-    N : int
-        Number of qubits
-    """
-    # Apply entanglement to the neighbouring spins
-    for spin in range(0, N - 1):
-        qml.CNOT(wires=[spin, spin + 1])
-
-def circuit_entX_neighbour(N, params, index = 0):
-    """ 
-    Establish entanglement between qubits using IsingXX gates
-    
-    Parameters
-    ----------
-    N : int
-        Number of qubits
-    params: np.ndarray
-        Array of parameters/rotation for the circuit
-    index: int
-        Index from where to pick the elements from the params array
-
-    Returns
-    -------
-    int
-        Updated starting index of params array for further rotations
-    """
-    # Apply entanglement to the neighbouring spins
-    for spin in range(0, N - 1):
-        qml.IsingXX(params[index + spin], wires = [spin, spin + 1])
-        
-    return index + N - 1
-
-def circuit_entX_nextneighbour(N, params, index = 0):
-    """ 
-    Establish entanglement between qubits using IsingXX gates
-    
-    Parameters
-    ----------
-    N : int
-        Number of qubits
-    params: np.ndarray
-        Array of parameters/rotation for the circuit
-    index: int
-        Index from where to pick the elements from the params array
-
-    Returns
-    -------
-    int
-        Updated starting index of params array for further rotations
-    """
-    # Apply entanglement to the neighbouring spins
-    for spin in range(0, N - 2):
-        qml.IsingXX(params[index + spin], wires = [spin, spin + 2])
-        
-    return index + N - 2
-    
-def vqe_circuit(N, params):
+def circuit_ising(N, params):
     """
     Full VQE circuit
 
@@ -158,19 +48,23 @@ def vqe_circuit(N, params):
     int
         Total number of parameters needed to build this circuit
     """
-    index = circuit_wall_RYRX(N, params)
+    # No wire will be measured until the end, the array of active
+    # wire will correspont to np.arange(N) throughout the whole circuit
+    active_wires = np.arange(N)
+    
+    index = circuits.wall_RY(active_wires, params)
     qml.Barrier()
-    circuit_wall_CNOT(N)
+    index = circuits.entX_neighbour(active_wires, params, index)
     qml.Barrier()
-    index = circuit_wall_RYRX(N, params, index)
+    index = circuits.wall_RY(active_wires, params, index)
     qml.Barrier()
-    circuit_wall_CNOT(N)
+    index = circuits.entX_neighbour(active_wires, params, index)
     qml.Barrier()
-    index = circuit_wall_RY(N, params, index)
+    index = circuits.wall_RY(active_wires, params, index)
     
     return index
 
-def vqe_circuit_ising(N, params):
+def circuit_annni(N, params):
     """
     Full VQE circuit
 
@@ -186,53 +80,29 @@ def vqe_circuit_ising(N, params):
     int
         Total number of parameters needed to build this circuit
     """
-    index = circuit_wall_RY(N, params)
-    qml.Barrier()
-    index = circuit_entX_neighbour(N, params, index)
-    qml.Barrier()
-    index = circuit_wall_RY(N, params, index)
-    qml.Barrier()
-    index = circuit_entX_neighbour(N, params, index)
-    qml.Barrier()
-    index = circuit_wall_RY(N, params, index)
+    # No wire will be measured until the end, the array of active
+    # wire will correspont to np.arange(N) throughout the whole circuit
+    active_wires = np.arange(N)
     
-    return index
-
-def vqe_circuit_annni(N, params):
-    """
-    Full VQE circuit
-
-    Parameters
-    ----------
-    N : int
-        Number of qubits
-    params: np.ndarray
-        Array of parameters/rotation for the circuit
-
-    Returns
-    -------
-    int
-        Total number of parameters needed to build this circuit
-    """
-    index = circuit_wall_RY(N, params)
+    index = circuits.wall_RY(active_wires, params)
     qml.Barrier()
-    index = circuit_entX_neighbour(N, params, index)
+    index = circuits.entX_neighbour(active_wires, params, index)
     qml.Barrier()
-    index = circuit_wall_RY(N, params, index)
+    index = circuits.wall_RY(active_wires, params, index)
     qml.Barrier()
-    index = circuit_entX_nextneighbour(N, params, index)
+    index = circuits.entX_nextneighbour(active_wires, params, index)
     qml.Barrier()
-    index = circuit_wall_RY(N, params,index)
+    index = circuits.wall_RY(active_wires, params, index)
     qml.Barrier()
-    index = circuit_entX_neighbour(N, params, index)
+    index = circuits.entX_neighbour(active_wires, params, index)
     qml.Barrier()
-    index = circuit_wall_RY(N, params, index)
+    index = circuits.wall_RY(active_wires, params, index)
     qml.Barrier()
-    index = circuit_entX_nextneighbour(N, params, index)
+    index = circuits.entX_nextneighbour(active_wires, params, index)
     qml.Barrier()
-    index = circuit_wall_RY(N, params, index)
-    index = circuit_wall_RX(N, params, index)
-    index = circuit_wall_RY(N, params, index)
+    index = circuits.wall_RY(active_wires, params, index)
+    index = circuits.wall_RX(active_wires, params, index)
+    index = circuits.wall_RY(active_wires, params, index)
     
     return index
 
@@ -459,7 +329,7 @@ class vqe:
         plt.legend()
         plt.show()
 
-    def train(self, lr, n_epochs, reg=0, circuit=False, recycle=True):
+    def train(self, lr, n_epochs, reg=0, circuit=False, recycle=True, save_trajectories = False, epochs_batch_size = 500):
         """
         Training function for the VQE.
 
@@ -544,6 +414,7 @@ class vqe:
 
         if not recycle:
             self.recycle = False
+            oom = False
             # Regularizator of the optimizer
             def compute_diff_states(states):
                 return jnp.mean(jnp.square(jnp.diff(jnp.real(states), axis=1)))
@@ -582,18 +453,30 @@ class vqe:
                 params, opt_state = update(params, opt_state)
                 
                 # I want to skip when it == 0
-                if (it + 1) % 100 == 0:
-                    MSE.append(
-                        jnp.mean(jnp.square(j_v_compute_vqe_E(params) - self.Hs.true_e))
-                    )
+                if (it + 1) % epochs_batch_size == 0:
+                    if not oom:
+                        try:
+                            MSE.append(
+                                jnp.mean(jnp.square(j_v_compute_vqe_E(params) - self.Hs.true_e))
+                            )
+                        except RuntimeError:
+                            oom = True
+                            MSE.append(
+                                jnp.mean(jnp.square(v_compute_vqe_E(params) - self.Hs.true_e))
+                            )
+                    else:
+                        MSE.append(
+                                jnp.mean(jnp.square(v_compute_vqe_E(params) - self.Hs.true_e))
+                            )
 
                     # Update progress bar
                     progress.set_description("Cost: {0}".format(MSE[-1]))
-                    
-                self.trajectory.append(params)
+                
+                if save_trajectories:
+                    self.trajectory.append(params)
         else:
             self.recycle = True
-            
+            oom = False
             # Computes MSE of the true energies - vqe energies: function to minimize
             def loss_reg(param, Hmat, reg, previous_state):
                 pred_state = j_vqe_state(param)
@@ -659,9 +542,13 @@ class vqe:
 
         self.MSE = MSE
         self.vqe_states = params
-        self.vqe_e = j_v_compute_vqe_E(params)
-
-        self.states = jv_vqe_state(params)
+        
+        if not oom:
+            self.vqe_e = j_v_compute_vqe_E(params)
+            self.states = jv_vqe_state(params)
+        else:
+            self.vqe_e = v_compute_vqe_E(params)
+            self.states = v_vqe_state(params)
 
     def save(self, filename):
         """

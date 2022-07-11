@@ -61,12 +61,27 @@ def build_Hs(N, n_states):
     L_states = np.linspace(0, 2, n_states)
     
     Hs = []
+    labels = []
+    anni_params = []
     for k in K_states:
         for l in L_states:
+            anni_params.append([N,l,k])
             Hs.append(get_H(int(N), float(l), float(k)))
-        
-    labels = [None]*n_states*n_states
-    
+            
+            # Append the known labels (phases of the model)
+            if k == 0:
+                if l < 1:
+                    labels.append([0,1])
+                else:
+                    labels.append([1,0])
+            elif l == 0:
+                if k < .5:
+                    labels.append([0,1])
+                else:
+                    labels.append([0,0])
+            else:
+                labels.append([None,None])
+                
     recycle_rule = []
     k = 0
     while k < n_states:
@@ -77,4 +92,4 @@ def build_Hs(N, n_states):
         recycle_rule.append(np.arange((k+1)*n_states - 1, k*n_states - 1, -1) )
         k += 1
         
-    return Hs, labels, np.array(recycle_rule).flatten()
+    return Hs, labels, np.array(recycle_rule).flatten(), anni_params

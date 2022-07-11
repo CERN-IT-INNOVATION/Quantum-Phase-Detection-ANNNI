@@ -24,7 +24,7 @@ class hamiltonian:
             setattr(self, key, value)
             
         # Get pennylane hamiltonians and labels
-        self.qml_Hs, self.labels, self.recycle_rule = self.func(**kwargs)
+        self.qml_Hs, self.labels, self.recycle_rule, self.model_params = self.func(**kwargs)
         
         # Get the groundstate-energy and the matrix hamiltonian
         mat_Hs = []
