@@ -20,37 +20,11 @@ warnings.filterwarnings(
 
 import sys, os
 sys.path.insert(0, '../../')
-import PhaseEstimation.vqe
+import PhaseEstimation.circuits as circuits
 
 ##############
 
-
-def circuit_wall_RY(N, param, index=0):
-    """
-    Apply independent RY rotations to each wire in a Pennylane circuit
-
-    Parameters
-    ----------
-    N : int
-        Number of qubits
-    params: np.ndarray
-        Array of parameters/rotation for the circuit
-    index: int
-        Index from where to pick the elements from the params array
-
-    Returns
-    -------
-    int
-        Updated starting index of params array for further rotations
-    """
-    # Apply RY to each wire:
-    for spin in range(N):
-        qml.RY(param[index + spin], wires=spin)
-
-    return index + N
-
-
-def circuit_anomaly_entanglement(N, wires, wires_trash, shift=0):
+def anomaly_entanglement(wires, wires_trash, shift = 0):
     """
     Applies CX between a wire and a trash wire for each
     wire/trashwire
@@ -87,60 +61,12 @@ def circuit_anomaly_entanglement(N, wires, wires_trash, shift=0):
         while trash_idx > len(wires_trash) - 1:
             trash_idx = trash_idx - len(wires_trash)
         
-        qml.CNOT(wires=[int(wire), int(wires_trash[trash_idx])])
-        
+        qml.CNOT(wires=[int(wire), int(wires_trash[trash_idx])])      
 
 def anomaly_circuit(N, vqe_circuit, vqe_params, params):
     """
     Building function for the circuit:
           VQE(params_vqe) + Anomaly(params)
-          
-    Parameters
-    ----------
-    N : int
-        Number of qubits
-    vqe_circuit : function
-        Function of the VQE Circuit
-    vqe_params : np.ndarray
-        Array of VQE parameters (states)
-    params: np.ndarray
-        Array of parameters/rotation for the circuit
-    Returns
-    -------
-    np.ndarray
-        Index of the trash qubits
-    int
-        Number of parameters of the circuit
-    """
-    # Number of wires that will not be measured |phi>
-    n_wires = N // 2 + N % 2
-    # Number of wires that will be measured |0>^k
-    n_trash = N // 2
-
-    wires = np.concatenate(
-        (np.arange(0, n_wires // 2 + n_wires % 2), np.arange(N - n_wires // 2, N))
-    )
-    wires_trash = np.setdiff1d(np.arange(N), wires)
-
-    vqe_circuit(N, vqe_params)
-
-    # Visual Separation VQE||Anomaly
-    qml.Barrier()
-    qml.Barrier()
-    index = circuit_wall_RY(N, params)
-    circuit_anomaly_entanglement(N, wires, wires_trash)
-    qml.Barrier()
-    index = circuit_wall_RY(N, params, index)
-    circuit_anomaly_entanglement(N, wires, wires_trash)
-    qml.Barrier()
-    index = circuit_wall_RY(N, params, index)
-
-    return index        
-
-def anomaly_circuit2(N, vqe_circuit, vqe_params, params):
-    """
-    Building function for the circuit:
-          VQE(params_vqe) + Anomaly(params)
 
     Parameters
     ----------
@@ -160,6 +86,8 @@ def anomaly_circuit2(N, vqe_circuit, vqe_params, params):
     int
         Number of parameters of the circuit
     """
+    active_wires = np.arange(N)
+    
     # Number of wires that will not be measured |phi>
     n_wires = N // 2 + N % 2
     # Number of wires that will be measured |0>^k
@@ -168,7 +96,7 @@ def anomaly_circuit2(N, vqe_circuit, vqe_params, params):
     wires = np.concatenate(
         (np.arange(0, n_wires // 2 + n_wires % 2), np.arange(N - n_wires // 2, N))
     )
-    wires_trash = np.setdiff1d(np.arange(N), wires)
+    wires_trash = np.setdiff1d(active_wires, wires)
 
     vqe_circuit(N, vqe_params)
 
@@ -178,10 +106,10 @@ def anomaly_circuit2(N, vqe_circuit, vqe_params, params):
     
     index = 0
     for shift in range(len(wires_trash)):
-        index = circuit_wall_RY(N, params, index)
-        circuit_anomaly_entanglement(N, wires, wires_trash, shift)
+        index = circuits.wall_RY(active_wires, params, index)
+        anomaly_entanglement(wires, wires_trash, shift)
         qml.Barrier()
-    index = circuit_wall_RY(N, params, index)
+    index = circuits.wall_RY(active_wires, params, index)
 
     return index
 
