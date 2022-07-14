@@ -1,4 +1,4 @@
-""" This module implements the base function to implement a VQE for a Ising Chain with Transverse Field. """
+""" This module implements the base functions to implement an anomaly detector"""
 import pennylane as qml
 from pennylane import numpy as np
 import jax
@@ -24,7 +24,7 @@ import PhaseEstimation.circuits as circuits
 
 ##############
 
-def anomaly_entanglement(wires, wires_trash, shift = 0):
+def encoder_entanglement(wires, wires_trash, shift = 0):
     """
     Applies CX between a wire and a trash wire for each
     wire/trashwire
@@ -63,10 +63,10 @@ def anomaly_entanglement(wires, wires_trash, shift = 0):
         
         qml.CNOT(wires=[int(wire), int(wires_trash[trash_idx])])      
 
-def anomaly_circuit(N, vqe_circuit, vqe_params, params):
+def encoder_circuit(N, vqe_circuit, vqe_params, params):
     """
     Building function for the circuit:
-          VQE(params_vqe) + Anomaly(params)
+          VQE(params_vqe) + Encoder(params)
 
     Parameters
     ----------
@@ -104,13 +104,8 @@ def anomaly_circuit(N, vqe_circuit, vqe_params, params):
     qml.Barrier()
     qml.Barrier()
     
-    index = 0
-    for shift in range(len(wires_trash)):
-        index = circuits.wall_RY(active_wires, params, index)
-        anomaly_entanglement(wires, wires_trash, shift)
-        qml.Barrier()
-    index = circuits.wall_RY(active_wires, params, index)
-
+    index = circuits.encoder_circuit(wires, wires_trash, active_wires, params)
+    
     return index
 
 
@@ -189,25 +184,25 @@ class encoder:
         X_train = jnp.array(self.vqe_states[train_index])
 
         @qml.qnode(self.device, interface="jax")
-        def encoder_circuit(vqe_params, params):
+        def q_encoder_circuit(vqe_params, params):
             self.circuit(vqe_params, params)
 
             # return <psi|H|psi>
             return [qml.expval(qml.PauliZ(int(k))) for k in self.wires_trash]
 
-        v_encoder_circuit = jax.vmap(
-            lambda p, x: encoder_circuit(x, p), in_axes=(None, 0)
+        v_q_encoder_circuit = jax.vmap(
+            lambda p, x: q_encoder_circuit(x, p), in_axes=(None, 0)
         )
 
         def compress(params, vqe_params):
-            return jnp.sum(1 - v_encoder_circuit(params, vqe_params)) / (
+            return jnp.sum(1 - v_q_encoder_circuit(params, vqe_params)) / (
                 2 * len(vqe_params)
             )
 
         jd_compress = jax.jit(jax.grad(lambda p: compress(p, X_train)))
         j_compress = jax.jit(lambda p: compress(p, X_train))
         get_compression = jax.jit(
-            lambda p: jnp.sum(v_encoder_circuit(p, X_train), axis=1)
+            lambda p: jnp.sum(v_q_encoder_circuit(p, X_train), axis=1)
             / len(self.wires_trash)
         )
         
@@ -291,7 +286,7 @@ class encoder:
 
 def load(filename_vqe, filename_enc):
     """
-    Load QCNN from VQE file and QCNN file
+    Load Encoder from VQE file and Encoder file
     
     Parameters
     ----------

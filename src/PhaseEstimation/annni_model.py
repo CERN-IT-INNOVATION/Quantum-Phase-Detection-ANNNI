@@ -73,12 +73,12 @@ def build_Hs(N, n_states):
                 if l < 1:
                     labels.append([0,1])
                 else:
-                    labels.append([1,0])
+                    labels.append([1,1])
             elif l == 0:
                 if k < .5:
                     labels.append([0,1])
                 else:
-                    labels.append([0,0])
+                    labels.append([1,0])
             else:
                 labels.append([None,None])
                 

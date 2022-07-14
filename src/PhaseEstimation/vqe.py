@@ -6,15 +6,6 @@ import jax.numpy as jnp
 from jax import jit
 from jax.example_libraries import optimizers
 
-from matplotlib import pyplot as plt
-from matplotlib.colors import LinearSegmentedColormap, LogNorm, Normalize
-import plotly.graph_objects as go
-import pandas as pd
-from orqviz.scans import perform_2D_scan, plot_2D_scan_result
-from orqviz.pca import (get_pca, perform_2D_pca_scan, plot_pca_landscape, 
-                        plot_optimization_trajectory_on_pca)
-
-
 import copy
 import tqdm  # Pretty progress bars
 import joblib, pickle  # Writing and loading
@@ -29,6 +20,7 @@ warnings.filterwarnings(
 import sys, os
 sys.path.insert(0, '../../')
 import PhaseEstimation.circuits as circuits
+import PhaseEstimation.losses as losses
 
 ##############
 
@@ -66,7 +58,7 @@ def circuit_ising(N, params):
 
 def circuit_annni(N, params):
     """
-    Full VQE circuit
+    Full VQE circuit with next neighbour IsingXX gates (for the ANNNI model)
 
     Parameters
     ----------
@@ -86,26 +78,18 @@ def circuit_annni(N, params):
     
     index = circuits.wall_RY(active_wires, params)
     qml.Barrier()
-    index = circuits.entX_neighbour(active_wires, params, index)
-    qml.Barrier()
-    index = circuits.wall_RY(active_wires, params, index)
-    qml.Barrier()
-    index = circuits.entX_nextneighbour(active_wires, params, index)
-    qml.Barrier()
-    index = circuits.wall_RY(active_wires, params, index)
-    qml.Barrier()
-    index = circuits.entX_neighbour(active_wires, params, index)
-    qml.Barrier()
-    index = circuits.wall_RY(active_wires, params, index)
-    qml.Barrier()
-    index = circuits.entX_nextneighbour(active_wires, params, index)
-    qml.Barrier()
+    for _ in range(2):
+        index = circuits.entX_neighbour(active_wires, params, index)
+        qml.Barrier()
+        index = circuits.wall_RY(active_wires, params, index)
+        qml.Barrier()
+        index = circuits.entX_nextneighbour(active_wires, params, index)
+        qml.Barrier()
+    
     index = circuits.wall_RY(active_wires, params, index)
     index = circuits.wall_RX(active_wires, params, index)
-    index = circuits.wall_RY(active_wires, params, index)
     
     return index
-
 
 class vqe:
     def __init__(self, Hs, circuit):
@@ -132,202 +116,14 @@ class vqe:
         self.states_dist = []
 
         self.circuit_fun = circuit
-
-    def show_circuit(self):
-        """
-        Prints the current circuit defined by self.circuit
-        """
-
+        
         @qml.qnode(self.device, interface="jax")
         def vqe_state(self):
             self.circuit(np.arange(self.n_params))
 
             return qml.state()
 
-        drawer = qml.draw(vqe_state)
-        print(drawer(self))
-
-    def show_results_isingchain(self):
-        """
-        Shows results of a trained VQE run:
-        > VQE enegies plot
-        > Loss curve if VQE was trained using recycle = False
-        > Final relative errors
-        > Mean Squared difference between final subsequent states
-        """
-        self.states_dist = [
-            np.mean(np.square(np.real(self.states[k + 1] - self.states[k])))
-            for k in range(self.n_states - 1)
-        ]
-        
-        lams = np.linspace(0, 2*self.Hs.J, self.n_states)
-        
-        tot_plots = 3 if self.recycle else 4
-        fig, ax = plt.subplots(tot_plots, 1, figsize=(12, 18.6))
-
-        ax[0].plot(lams, self.Hs.true_e, "--", label="True", color="red", lw=2)
-        ax[0].plot(lams, self.vqe_e, ".", label="VQE", color="green", lw=2)
-        ax[0].plot(lams, self.vqe_e, color="green", lw=2, alpha=0.6)
-        ax[0].grid(True)
-        ax[0].set_title(
-            "Ground States of Ising Hamiltonian ({0}-spins), J = {1}".format(
-                self.N, self.Hs.J
-            )
-        )
-        ax[0].set_xlabel(r"$\lambda$")
-        ax[0].set_ylabel(r"$E(\lambda)$")
-        ax[0].legend()
-
-        k = 1
-        if not self.recycle:
-            ax[1].plot(
-                np.arange(len(self.MSE)) * 100, self.MSE, ".", color="orange", ms=7
-            )
-            ax[1].plot(
-                np.arange(len(self.MSE)) * 100, self.MSE, color="orange", alpha=0.4
-            )
-            ax[1].set_title("Convergence of VQE")
-            ax[1].set_xlabel("Epoch")
-            ax[1].set_ylabel("MSE")
-            ax[1].grid(True)
-            ax[1].axhline(y=0, color="r", linestyle="--")
-
-            k = 2
-
-        accuracy = np.abs((self.Hs.true_e - self.vqe_e) / self.Hs.true_e)
-        ax[k].fill_between(
-            lams, 0.01, max(np.max(accuracy), 0.01), color="r", alpha=0.3
-        )
-        ax[k].fill_between(
-            lams, 0.01, min(np.min(accuracy), 0), color="green", alpha=0.3
-        )
-        ax[k].axhline(y=0.01, color="r", linestyle="--")
-        ax[k].scatter(lams, accuracy)
-        ax[k].grid(True)
-        ax[k].set_title("Accuracy of VQE".format(self.N, self.Hs.J))
-        ax[k].set_xlabel(r"$\lambda$")
-        ax[k].set_ylabel(r"$|(E_{vqe} - E_{true})/E_{true}|$")
-
-        ax[k + 1].set_title(
-            "Mean square distance between consecutives density matrices"
-        )
-        ax[k + 1].plot(
-            np.linspace(0, 2 * self.Hs.J, num=self.n_states - 1),
-            self.states_dist,
-            "-o",
-        )
-        ax[k + 1].grid(True)
-        ax[k + 1].axvline(x=self.Hs.J, color="gray", linestyle="--")
-        ax[k + 1].set_xlabel(r"$\lambda$")
-
-        plt.tight_layout()
-
-    def show_results_annni(self, log_heatmap = False):
-        """
-        Shows results of a trained VQE run:
-        > VQE enegies plot
-        > Loss curve if VQE was trained using recycle = False
-        > Final relative errors
-        > Mean Squared difference between final neighbouring states
-        """
-        states_dist = []
-        side = int(np.sqrt(self.n_states))
-        
-        trues = np.reshape(self.Hs.true_e,(side, side) )
-        preds = np.reshape(self.vqe_e,(side, side) )
-
-        x = np.linspace(1, 0, side)
-        y = np.linspace(0, 2, side)
-        
-        fig = go.Figure(data=[go.Surface(opacity=.2, colorscale='Reds', z=trues, x=x, y=y),
-                      go.Surface(opacity=1, colorscale='Blues',z=preds, x=x, y=y)])
-
-        fig.update_layout(height=500)
-        fig.show()
-        
-        if not self.recycle:
-            plt.figure(figsize=(15,3))
-            plt.title('Loss of training set')
-            plt.plot(np.arange(len(self.MSE)+1)[1:]*100, self.MSE)
-            plt.show()
-        
-        accuracy = np.rot90( np.abs(preds-trues)/np.abs(trues) )
-        
-        fig2, ax = plt.subplots(1, 2, figsize=(10, 40))
-        
-        if not log_heatmap:
-            colors_good = np.squeeze( np.dstack((np.dstack((np.linspace(.3,0,25), np.linspace(.8,1,25))), np.linspace(1,0,25) )) )
-            colors_bad  = np.squeeze( np.dstack((np.dstack((np.linspace(1,0,100), [0]*100)), [0]*100 )) )
-            colors = np.vstack((colors_good, colors_bad))
-            cmap_acc = LinearSegmentedColormap.from_list('accuracies', colors)
-
-            acc = ax[0].imshow(accuracy, cmap = cmap_acc)
-            acc.set_clim(0,0.05)
-            plt.colorbar(acc, ax=ax[0], fraction=0.04)
-        else:
-            colors = np.squeeze( np.dstack((np.dstack((np.linspace(0,1,75), np.linspace(1,0,75))), np.linspace(0,0,75) )) )
-            cmap_acc = LinearSegmentedColormap.from_list('accuracies', colors)
-            acc = ax[0].imshow(accuracy, cmap = cmap_acc, norm=LogNorm())
-            plt.colorbar(acc, ax=ax[0], fraction=0.04)
-        
-        ax[0].set_xlabel('L')
-        ax[0].set_ylabel('K')
-        ax[0].set_title('Relative errors')
-        
-        ax[0].set_xticks(ticks=np.linspace(0,side-1,4).astype(int), labels= np.round(x[np.linspace(side-1,0,4).astype(int)],2))
-        ax[0].set_yticks(ticks=np.linspace(0,side-1,4).astype(int), labels= np.round(y[np.linspace(side-1,0,4).astype(int)],2))
-        
-        for idx, state in enumerate(self.states):
-            neighbours = np.array([idx + 1, idx - 1, idx + side, idx - side])
-            neighbours = np.delete(neighbours, np.logical_not(np.isin(neighbours, self.Hs.recycle_rule)) )
-
-
-            if (idx + 1) % side == 0 and idx != self.n_states - 1:
-                neighbours = np.delete(neighbours, 0)
-            if (idx    ) % side == 0 and idx != 0:
-                neighbours = np.delete(neighbours, 1)
-
-            states_dist.append(np.mean(np.square([np.real(self.states[n] - state) for n in neighbours]) ) )
-
-        ax[1].set_title('Mean square difference between neighbouring states')
-        diff = ax[1].imshow(np.rot90(np.reshape(states_dist, (side,side)) ) )
-        plt.colorbar(diff, ax=ax[1], fraction=0.04)
-        ax[1].set_xlabel('L')
-        ax[1].set_ylabel('K')
-        
-        ax[1].set_xticks(ticks=np.linspace(0,side-1,4).astype(int), labels= np.round(x[np.linspace(side-1,0,4).astype(int)],2))
-        ax[1].set_yticks(ticks=np.linspace(0,side-1,4).astype(int), labels= np.round(y[np.linspace(side-1,0,4).astype(int)],2))
-        plt.tight_layout()
-        
-    def show_trajectory(self, idx):
-        def loss(params):
-            @qml.qnode(self.device, interface="jax")
-            def vqe_state(vqe_params):
-                self.circuit(vqe_params)
-
-                return qml.state()
-
-            pred_state = vqe_state(params)
-            vqe_e = jnp.conj(pred_state) @ self.Hs.mat_Hs[idx] @ pred_state
-
-            return jnp.real(vqe_e)
-
-        trajs = []
-        for traj in self.trajectory:
-            trajs.append(traj[idx])
-
-        dir1 = np.array([1., 0.])
-        dir2 = np.array([0., 1.])
-
-        pca = get_pca(trajs)
-        scan_pca_result = perform_2D_pca_scan(pca, loss, n_steps_x=30)
-
-        fig, ax = plt.subplots()
-        plot_pca_landscape(scan_pca_result, pca, fig=fig, ax=ax)
-        plot_optimization_trajectory_on_pca(trajs, pca, ax=ax, 
-                                            label="Optimization Trajectory", color="lightsteelblue")
-        plt.legend()
-        plt.show()
+        self.drawer = qml.draw(vqe_state)(self)
 
     def train(self, lr, n_epochs, reg=0, circuit=False, recycle=True, save_trajectories = False, epochs_batch_size = 500):
         """
@@ -361,7 +157,7 @@ class vqe:
         if circuit:
             # Display the circuit
             print("+--- CIRCUIT ---+")
-            self.show_circuit()
+            print(self.drawer)
 
         ### JAX FUNCTIONS ###
         # Circuit that returns the state |psi>
@@ -370,6 +166,17 @@ class vqe:
             self.circuit(vqe_params)
 
             return qml.state()
+        
+        def compute_true_state(H):
+            # Compute eigenvalues and eigenvectors
+            eigval, eigvec = jnp.linalg.eigh(H)
+            # Get the eigenstate to the lowest eigenvalue
+            gstate = eigvec[:,jnp.argmin(eigval)]
+
+            return gstate
+
+        jv_compute_true_state = jax.jit(jax.vmap(compute_true_state))
+        self.true_states = jv_compute_true_state(self.Hs.mat_Hs)
 
         # vmap of the circuit
         v_vqe_state = jax.vmap(lambda v: vqe_state(v), in_axes=(0))
@@ -415,11 +222,12 @@ class vqe:
         if not recycle:
             self.recycle = False
             oom = False
+            jv_fidelties = jax.jit(lambda true, pars: losses.vqe_fidelties(true, pars, vqe_state) )
+            
             # Regularizator of the optimizer
             def compute_diff_states(states):
                 return jnp.mean(jnp.square(jnp.diff(jnp.real(states), axis=1)))
 
-            # Computes MSE of the true energies - vqe energies: function to minimize
             def loss(params):
                 pred_states = v_vqe_state(params)
                 vqe_e = v_compute_E(pred_states, self.Hs.mat_Hs)
@@ -470,13 +278,15 @@ class vqe:
                             )
 
                     # Update progress bar
-                    progress.set_description("Cost: {0}".format(MSE[-1]))
+                    progress.set_description("Cost: {0:.4f} | Mean F.: {1:.4f}".format(MSE[-1], jv_fidelties(self.true_states, jnp.array(params)) ) )
                 
-                if save_trajectories:
-                    self.trajectory.append(params)
+                if it % 10 == 0:
+                    if save_trajectories:
+                        self.trajectory.append(params)
         else:
             self.recycle = True
             oom = False
+            
             # Computes MSE of the true energies - vqe energies: function to minimize
             def loss_reg(param, Hmat, reg, previous_state):
                 pred_state = j_vqe_state(param)
