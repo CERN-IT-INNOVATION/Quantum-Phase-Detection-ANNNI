@@ -361,3 +361,16 @@ def show_QCNN_classification1D(qcnnclass):
         predictions_test,
         c=colors_test,
     )
+    
+def show_VQE_crossfidelties(vqeclass):
+    heatmap = np.zeros((vqeclass.n_states,vqeclass.n_states))
+    
+    for j, state1 in enumerate(vqeclass.states):
+        for k, state2 in enumerate(vqeclass.states):
+            heatmap[j,k] = np.square(np.abs( np.conj(state1) @ state2 ))
+            
+    plt.imshow(heatmap)
+    plt.clim(0,1)
+    plt.colorbar()
+    
+    print('Mean Cross Fidelty: {0}'.format(np.mean(heatmap)) )
