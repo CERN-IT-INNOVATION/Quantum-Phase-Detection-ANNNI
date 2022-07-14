@@ -120,7 +120,7 @@ class qcnn:
         print(drawer(self))
 
     # Training function
-    def train(self, lr, n_epochs, train_index, circuit=False, plot=False):
+    def train(self, lr, n_epochs, train_index, loss_fn, circuit=False, plot=False):
         """
         Training function for the QCNN.
 
@@ -157,34 +157,23 @@ class qcnn:
 
             return qml.probs(wires=self.N - 1)
 
-        def compute_cross_entropy(X, Y, params):
-            v_qcnn_prob = jax.vmap(lambda v: qcnn_circuit_prob(v, params))
-
-            predictions = v_qcnn_prob(X)
-            logprobs = jnp.log(predictions)
-
-            nll = jnp.take_along_axis(logprobs, jnp.expand_dims(Y, axis=1), axis=1)
-            ce = -jnp.mean(nll)
-
-            return ce
-
         # Gradient of the Loss function
-        d_compute_cross_entropy = jax.jit(
-            jax.grad(lambda p: compute_cross_entropy(X_train, Y_train, p))
+        jd_loss_fn = jax.jit(
+            jax.grad(lambda p: loss_fn(X_train, Y_train, p, qcnn_circuit_prob))
         )
 
         def update(params, opt_state):
-            grads = d_compute_cross_entropy(params)
+            grads = jd_loss_fn(params)
             opt_state = opt_update(0, grads, opt_state)
             
             return get_params(opt_state), opt_state
         
         # Compute Loss of whole sets
-        train_compute_cross_entropy = jax.jit(
-            lambda p: compute_cross_entropy(X_train, Y_train, p)
+        train_loss_fn = jax.jit(
+            lambda p: loss_fn(X_train, Y_train, p, qcnn_circuit_prob)
         )
-        test_compute_cross_entropy = jax.jit(
-            lambda p: compute_cross_entropy(X_test, Y_test, p)
+        test_loss_fn = jax.jit(
+            lambda p: loss_fn(X_test, Y_test, p, qcnn_circuit_prob)
         )
 
         params = copy.copy(self.params)
@@ -201,9 +190,9 @@ class qcnn:
             params, opt_state = update(params, opt_state)
 
             if epoch % 100 == 0:
-                loss_history.append(train_compute_cross_entropy(params))
+                loss_history.append(train_loss_fn(params))
                 if len(Y_test) > 0:
-                    loss_history_test.append(test_compute_cross_entropy(params))
+                    loss_history_test.append(test_loss_fn(params))
             progress.update(1)
             progress.set_description("Cost: {0}".format(loss_history[-1]))
 
@@ -231,99 +220,6 @@ class qcnn:
             plt.xlabel("Epoch")
             plt.grid(True)
             plt.legend()
-
-    def show_results_isingchain(self):
-        """
-        Plots performance of the classifier on the whole data
-        """
-        train_index = self.train_index
-            
-        @qml.qnode(self.device, interface="jax")
-        def qcnn_circuit_prob(params_vqe, params):
-            self.circuit(params_vqe, params)
-
-            return qml.probs(wires=self.N - 1)
-
-        test_index = np.setdiff1d(np.arange(len(self.vqe_states)), train_index)
-
-        predictions_train = []
-        predictions_test = []
-
-        colors_train = []
-        colors_test = []
-
-        vcircuit = jax.vmap(lambda v: qcnn_circuit_prob(v, self.params), in_axes=(0))
-        predictions = vcircuit(self.vqe_states)[:, 1]
-
-        for i, prediction in enumerate(predictions):
-            # if data in training set
-            if i in train_index:
-                predictions_train.append(prediction)
-                if np.round(prediction) == 0:
-                    colors_train.append("green") if self.labels[
-                        i
-                    ] == 0 else colors_train.append("red")
-                else:
-                    colors_train.append("red") if self.labels[
-                        i
-                    ] == 0 else colors_train.append("green")
-            else:
-                predictions_test.append(prediction)
-                if np.round(prediction) == 0:
-                    colors_test.append("green") if self.labels[
-                        i
-                    ] == 0 else colors_test.append("red")
-                else:
-                    colors_test.append("red") if self.labels[
-                        i
-                    ] == 0 else colors_test.append("green")
-
-        fig, ax = plt.subplots(2, 1, figsize=(16, 10))
-
-        ax[0].set_xlim(-0.1, 2.1)
-        ax[0].set_ylim(0, 1)
-        ax[0].grid(True)
-        ax[0].axhline(y=0.5, color="gray", linestyle="--")
-        ax[0].axvline(x=1, color="gray", linestyle="--")
-        ax[0].text(0.375, 0.68, "I", fontsize=24, fontfamily="serif")
-        ax[0].text(1.6, 0.68, "II", fontsize=24, fontfamily="serif")
-        ax[0].set_xlabel("Transverse field")
-        ax[0].set_ylabel("Prediction of label II")
-        ax[0].set_title("Predictions of labels; J = 1")
-        ax[0].scatter(
-            2 * np.sort(train_index) / len(self.vqe_states),
-            predictions_train,
-            c="royalblue",
-            label="Training samples",
-        )
-        ax[0].scatter(
-            2 * np.sort(test_index) / len(self.vqe_states),
-            predictions_test,
-            c="orange",
-            label="Test samples",
-        )
-        ax[0].legend()
-
-        ax[1].set_xlim(-0.1, 2.1)
-        ax[1].set_ylim(0, 1)
-        ax[1].grid(True)
-        ax[1].axhline(y=0.5, color="gray", linestyle="--")
-        ax[1].axvline(x=1, color="gray", linestyle="--")
-        ax[1].text(0.375, 0.68, "I", fontsize=24, fontfamily="serif")
-        ax[1].text(1.6, 0.68, "II", fontsize=24, fontfamily="serif")
-        ax[1].set_xlabel("Transverse field")
-        ax[1].set_ylabel("Prediction of label II")
-        ax[1].set_title("Predictions of labels; J = 1")
-        ax[1].scatter(
-            2 * np.sort(train_index) / len(self.vqe_states),
-            predictions_train,
-            c=colors_train,
-        )
-        ax[1].scatter(
-            2 * np.sort(test_index) / len(self.vqe_states),
-            predictions_test,
-            c=colors_test,
-        )
 
     def save(filename):
         """
