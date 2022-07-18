@@ -7,6 +7,7 @@ from jax import jit
 from jax.example_libraries import optimizers
 
 from matplotlib import pyplot as plt
+import matplotlib as mpl
 
 import copy
 import tqdm  # Pretty progress bars
@@ -265,13 +266,13 @@ class encoder:
         X_test = jnp.array(self.vqe_states[test_index])
 
         @qml.qnode(self.device, interface="jax")
-        def encoder_circuit(vqe_params, params):
+        def encoder_circuit_ic(vqe_params, params):
             self.circuit(vqe_params, params)
 
             # return <psi|H|psi>
             return [qml.expval(qml.PauliZ(int(k))) for k in self.wires_trash]
 
-        v_encoder_circuit = jax.vmap(lambda x: encoder_circuit(x, self.params))
+        v_encoder_circuit = jax.vmap(lambda x: encoder_circuit_ic(x, self.params))
 
         exps_train = (1 - np.sum(v_encoder_circuit(X_train), axis=1) / 4) / 2
         exps_test = (1 - np.sum(v_encoder_circuit(X_test), axis=1) / 4) / 2
@@ -323,3 +324,89 @@ def load(filename_vqe, filename_enc):
     loaded_enc.params = params
 
     return loaded_enc
+
+def enc_classification_ANNNI(vqeclass, lr, epochs, inject = False):
+    """
+    Train 3 encoder on the corners: 
+       > K = 0, L = 2 (Paramagnetic)
+       > K = 0, L = 0 (Ferromagnetic)
+       > K = 1, L = 0 (Antiphase)
+    The other states will be classified taking the lowest error in each encoder
+    
+    Parameters
+    ----------
+    vqeclass : class
+        VQE class
+    lr : float
+        Learning rate for each training
+    epochs : int
+        Number of epochs for each training
+    inject : bool
+        If true, uses the real groundstates as inputs
+        
+    Returns
+    -------
+    np.ndarray
+        Array of labels
+    """
+    # indexes of the 3 corner points
+    side = int(np.sqrt(vqeclass.n_states))
+    phase1 = 0
+    phase2 = side - 1
+    phase3 = int(vqeclass.n_states - side)
+    
+    encclass  = encoder(vqeclass, encoder_circuit)
+    if not inject:
+        X = jnp.array(encclass.vqe_params)
+
+        @qml.qnode(encclass.device, interface="jax")
+        def encoder_circuit_class(vqe_params, params):
+            encclass.vqe_enc_circuit(vqe_params, params)
+
+            return [qml.expval(qml.PauliZ(int(k))) for k in encclass.wires_trash]
+    else:
+        try:
+            qcnnclass.psi
+        except:
+            psi = []
+            for h in encclass.vqe.Hs.mat_Hs:
+                # Compute eigenvalues and eigenvectors
+                eigval, eigvec = jnp.linalg.eigh(h)
+                # Get the eigenstate to the lowest eigenvalue
+                gstate = eigvec[:,jnp.argmin(eigval)]
+
+                psi.append(gstate)
+            psi = jnp.array(psi)
+            encclass.psi = psi
+            
+        X = jnp.array(encclass.psi)
+
+        @qml.qnode(encclass.device, interface="jax")
+        def encoder_circuit_class(psi, params):
+            encclass.psi_enc_circuit(psi, params)
+
+            return [qml.expval(qml.PauliZ(int(k))) for k in encclass.wires_trash]
+
+    encoding_scores = []
+    for phase in [phase1,phase2,phase3]:
+        encclass  = encoder(vqeclass, encoder_circuit)
+        encclass.train(lr, epochs, np.array([phase]), circuit = False, plot = False, inject = inject)
+        v_encoder_circuit = jax.vmap(lambda x: encoder_circuit_class(x, encclass.params))
+        exps = (1 - np.sum(v_encoder_circuit(X), axis=1) / 4) / 2
+        exps = np.rot90( np.reshape(exps, (side,side)) )
+        
+        encoding_scores.append(exps)
+
+    phases = mpl.colors.ListedColormap(["navy", "crimson", "limegreen", "limegreen"])
+    norm = mpl.colors.BoundaryNorm(np.arange(0,4), phases.N) 
+    plt.imshow(np.argmin(np.array(encoding_scores), axis = (0)), cmap = phases, norm = norm)
+
+    plt.title('Classification of ANNNI states')
+    plt.ylabel('L')
+    plt.xlabel('K')
+
+    plt.yticks(np.linspace(0,side-1,5), labels = np.round(np.linspace(2,0,5),2) )
+
+    plt.xticks(np.linspace(0,side-1,5), labels = np.round(np.linspace(0,-1,5),2) )
+        
+    return np.argmin(np.array(encoding_scores), axis = (0))

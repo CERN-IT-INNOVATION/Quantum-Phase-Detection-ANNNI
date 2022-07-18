@@ -66,7 +66,7 @@ def qcnn_circuit(params, N, n_outputs):
         qml.Barrier()
 
     # Return the number of parameters
-    return index + 1
+    return index + 1, active_wires
 
 class qcnn:
     def __init__(self, vqe, qcnn_circuit, n_outputs = 1):
@@ -85,8 +85,9 @@ class qcnn:
         self.vqe = vqe
         self.N = vqe.N
         self.n_states = vqe.n_states
+        self.n_outputs = n_outputs
         self.qcnn_circuit_fun = lambda p: qcnn_circuit(p, self.N, n_outputs)
-        self.n_params = self.qcnn_circuit_fun([0] * 10000)
+        self.n_params, self.final_active_wires = self.qcnn_circuit_fun([0] * 10000)
         self.params = np.array(np.random.rand(self.n_params) )
         self.device = vqe.device
 
@@ -98,8 +99,11 @@ class qcnn:
 
         @qml.qnode(self.device, interface="jax")
         def circuit_drawer(self):
-            self.qcnn_circuit_fun(np.arange(self.n_params))
-            return qml.probs(wires=self.N - 1)
+            _, active_wires = self.qcnn_circuit_fun(np.arange(self.n_params))
+            if n_outputs == 1:
+                return qml.probs(wires=self.N - 1)
+            else:
+                return [qml.probs(wires=int(k)) for k in active_wires]
             
         self.drawer = qml.draw(circuit_drawer)(self)
     
@@ -110,7 +114,7 @@ class qcnn:
     def psi_qcnn_circuit(self, psi, qcnn_p):
         qml.QubitStateVector(psi, wires=[int(k) for k in range(self.N)])
         self.qcnn_circuit_fun(qcnn_p)
-        
+    
     # Training function
     def train(self, lr, n_epochs, train_index, loss_fn, circuit=False, plot=False, inject = False):
         """
@@ -134,14 +138,26 @@ class qcnn:
             if True -> Exact ground states will be computed and used as input
         """
 
-        X_train, Y_train = jnp.array(self.vqe_params[train_index]), jnp.array(
-            self.labels[train_index]
-        )
-        test_index = np.setdiff1d(np.arange(len(self.vqe_params)), train_index)
-        X_test, Y_test = jnp.array(self.vqe_params[test_index]), jnp.array(
-            self.labels[test_index]
-        )
-
+        if None not in self.labels:
+            X_train, Y_train = jnp.array(self.vqe_params[train_index]), jnp.array(
+                self.labels[train_index]
+            )
+            test_index = np.setdiff1d(np.arange(len(self.vqe_params)), train_index)
+            X_test, Y_test = jnp.array(self.vqe_params[test_index]), jnp.array(
+                self.labels[test_index]
+            )
+        else:
+            mask = jnp.array(jnp.logical_or(jnp.array(self.vqe.Hs.model_params)[:,1] == 0, jnp.array(self.vqe.Hs.model_params)[:,2] == 0))
+            #mask = jnp.array(self.vqe.Hs.model_params)[:,1] == 0
+            self.vqe_params = jnp.array(self.vqe_params)
+            
+            #mask = jnp.array(myqcnn.vqe.Hs.model_params)[:,1] == 0
+            X, Y = self.vqe_params[mask], self.labels[mask,:].astype(int)
+            test_index = np.setdiff1d(np.arange(len(Y)), train_index)
+            
+            X_train, Y_train = X[train_index], Y[train_index]
+            X_test, Y_test   = X[test_index], Y[test_index]
+            
         if circuit:
             # Display the circuit
             print("+--- CIRCUIT ---+")
@@ -151,7 +167,10 @@ class qcnn:
         def qcnn_circuit_prob(vqe_p, qcnn_p):
             self.vqe_qcnn_circuit(vqe_p, qcnn_p)
 
-            return qml.probs(wires=self.N - 1)
+            if self.n_outputs == 1:
+                return qml.probs(wires=self.N - 1)
+            else:
+                return [qml.probs(wires=int(k)) for k in self.final_active_wires]
         
         params = copy.copy(self.params)
 
@@ -175,7 +194,10 @@ class qcnn:
             def qcnn_circuit_prob(psi, qcnn_p):
                 self.psi_qcnn_circuit(psi, qcnn_p)
 
-                return qml.probs(wires=self.N - 1)
+                if self.n_outputs == 1:
+                    return qml.probs(wires=self.N - 1)
+                else:
+                    return [qml.probs(wires=int(k)) for k in self.final_active_wires]
         
         # Gradient of the Loss function
         jd_loss_fn = jax.jit(
