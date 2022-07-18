@@ -25,7 +25,7 @@ import PhaseEstimation.circuits as circuits
 
 ##############
 
-def qcnn_circuit(params_vqe, vqe_circuit_fun, params, N, n_outputs):
+def qcnn_circuit(params, N, n_outputs):
     """
     Building function for the circuit:
           VQE(params_vqe) + QCNN(params)
@@ -49,9 +49,6 @@ def qcnn_circuit(params_vqe, vqe_circuit_fun, params, N, n_outputs):
 
     # Wires that are not measured (through pooling)
     active_wires = np.arange(N)
-
-    # Input: State through VQE
-    vqe_circuit_fun(N, params_vqe)
 
     # Visual Separation VQE||QCNN
     qml.Barrier()
@@ -90,37 +87,34 @@ class qcnn:
         self.vqe = vqe
         self.N = vqe.N
         self.n_states = vqe.n_states
-        self.circuit = lambda vqe_p, qcnn_p: qcnn_circuit(
-            vqe_p, vqe.circuit_fun, qcnn_p, self.N, n_outputs
-        )
-        self.n_params = self.circuit([0] * 10000, [0] * 10000)
-        self.params = np.array([np.pi / 4] * self.n_params)
+        self.qcnn_circuit_fun = lambda p: qcnn_circuit(p, self.N, n_outputs)
+        self.n_params = self.qcnn_circuit_fun([0] * 10000)
+        self.params = np.array(np.random.rand(self.n_params) )
         self.device = vqe.device
 
-        self.vqe_states = np.array(vqe.vqe_states)
+        self.vqe_params = np.array(vqe.vqe_params)
         self.labels = np.array(vqe.Hs.labels)
         self.train_index = []
         self.loss_train = []
         self.loss_test = []
 
-        self.circuit_fun = qcnn_circuit
-
-    def show_circuit(self):
-        """
-        Prints the current circuit defined by self.circuit
-        """
-
         @qml.qnode(self.device, interface="jax")
-        def qcnn_state(self):
-            self.circuit([0] * 1000, np.arange(self.n_params))
-
-            return qml.state()
-
-        drawer = qml.draw(qcnn_state)
-        print(drawer(self))
-
+        def circuit_drawer(self):
+            self.qcnn_circuit_fun(np.arange(self.n_params))
+            return qml.probs(wires=self.N - 1)
+            
+        self.drawer = qml.draw(circuit_drawer)(self)
+    
+    def vqe_qcnn_circuit(self, vqe_p, qcnn_p):
+        self.vqe.circuit(vqe_p)
+        self.qcnn_circuit_fun(qcnn_p)
+        
+    def psi_qcnn_circuit(self, psi, qcnn_p):
+        qml.QubitStateVector(psi, wires=[int(k) for k in range(self.N)])
+        self.qcnn_circuit_fun(qcnn_p)
+        
     # Training function
-    def train(self, lr, n_epochs, train_index, loss_fn, circuit=False, plot=False):
+    def train(self, lr, n_epochs, train_index, loss_fn, circuit=False, plot=False, inject = False):
         """
         Training function for the QCNN.
 
@@ -138,25 +132,49 @@ class qcnn:
             if True -> It displays loss curve
         """
 
-        X_train, Y_train = jnp.array(self.vqe_states[train_index]), jnp.array(
+        X_train, Y_train = jnp.array(self.vqe_params[train_index]), jnp.array(
             self.labels[train_index]
         )
-        test_index = np.setdiff1d(np.arange(len(self.vqe_states)), train_index)
-        X_test, Y_test = jnp.array(self.vqe_states[test_index]), jnp.array(
+        test_index = np.setdiff1d(np.arange(len(self.vqe_params)), train_index)
+        X_test, Y_test = jnp.array(self.vqe_params[test_index]), jnp.array(
             self.labels[test_index]
         )
 
         if circuit:
             # Display the circuit
             print("+--- CIRCUIT ---+")
-            self.show_circuit()
+            print(self.drawer)
 
         @qml.qnode(self.device, interface="jax")
-        def qcnn_circuit_prob(params_vqe, params):
-            self.circuit(params_vqe, params)
+        def qcnn_circuit_prob(vqe_p, qcnn_p):
+            self.vqe_qcnn_circuit(vqe_p, qcnn_p)
 
             return qml.probs(wires=self.N - 1)
+        
+        params = copy.copy(self.params)
 
+        if inject:
+            psi = []
+            for h in self.vqe.Hs.mat_Hs:
+                # Compute eigenvalues and eigenvectors
+                eigval, eigvec = jnp.linalg.eigh(h)
+                # Get the eigenstate to the lowest eigenvalue
+                gstate = eigvec[:,jnp.argmin(eigval)]
+
+                psi.append(gstate)
+            psi = jnp.array(psi)
+            self.psi = psi
+            
+            X_train = jnp.array(psi[train_index])
+            test_index = np.setdiff1d(np.arange(len(psi)), train_index)
+            X_test  = jnp.array(psi[test_index])
+
+            @qml.qnode(self.device, interface="jax")
+            def qcnn_circuit_prob(psi, qcnn_p):
+                self.psi_qcnn_circuit(psi, qcnn_p)
+
+                return qml.probs(wires=self.N - 1)
+        
         # Gradient of the Loss function
         jd_loss_fn = jax.jit(
             jax.grad(lambda p: loss_fn(X_train, Y_train, p, qcnn_circuit_prob))
@@ -175,8 +193,6 @@ class qcnn:
         test_loss_fn = jax.jit(
             lambda p: loss_fn(X_test, Y_test, p, qcnn_circuit_prob)
         )
-
-        params = copy.copy(self.params)
 
         progress = tqdm.tqdm(range(n_epochs), position=0, leave=True)
 
@@ -200,6 +216,7 @@ class qcnn:
         self.loss_test = loss_history_test
         self.params = params
         self.train_index = train_index
+        self.circuit = self.vqe_qcnn_circuit if inject == False else self.psi_qcnn_circuit
         
         if plot:
             plt.figure(figsize=(15, 5))

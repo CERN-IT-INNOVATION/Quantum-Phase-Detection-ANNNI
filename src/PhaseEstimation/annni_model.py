@@ -5,7 +5,7 @@ import jax
 
 ##############
 
-def get_H(N, L, K):
+def get_H(N, L, K, ring = False):
     """
     Set up Hamiltonian:
             H = J1* (- Σsigma^i_x*sigma_x^{i+1} - (h/J1) * Σsigma^i_z - (J2/J1) * Σsigma^i_x*sigma_x^{i+2}
@@ -27,7 +27,7 @@ def get_H(N, L, K):
         Hamiltonian Pennylane class for the (Transverse) Ising Chain
     """
     # Interaction of spins with magnetic field
-    H = -L * qml.PauliZ(0)
+    H = - L * qml.PauliZ(0)
     for i in range(1, N):
         H = H - L * qml.PauliZ(i)
 
@@ -37,11 +37,16 @@ def get_H(N, L, K):
         
     # Interaction between spins (next-neighbouring):
     for i in range(0, N - 2):
-        H = H + K * (-1) * (qml.PauliX(i) @ qml.PauliX(i + 2))
+        H = H + (-1) * K * (qml.PauliX(i) @ qml.PauliX(i + 2))
+        
+    if ring:
+        H = H + (-1) * (qml.PauliX(N - 1) @ qml.PauliX(0))
+        H = H + (-1) * K * (qml.PauliX(N - 2) @ qml.PauliX(0))
+        H = H + (-1) * K * (qml.PauliX(N - 1) @ qml.PauliX(1))
 
     return H
 
-def build_Hs(N, n_states):
+def build_Hs(N, n_states, ring = False):
     """
     Sets up np.ndarray of pennylane Hamiltonians with different parameters
     total_states = n_states * n_states
@@ -57,7 +62,7 @@ def build_Hs(N, n_states):
     n_states : int
         Number of Hamiltonians to generate
     """
-    K_states = np.linspace(0, 1, n_states)
+    K_states = np.linspace(0, -1, n_states)
     L_states = np.linspace(0, 2, n_states)
     
     Hs = []
@@ -66,7 +71,7 @@ def build_Hs(N, n_states):
     for k in K_states:
         for l in L_states:
             anni_params.append([N,l,k])
-            Hs.append(get_H(int(N), float(l), float(k)))
+            Hs.append(get_H(int(N), float(l), float(k), ring))
             
             # Append the known labels (phases of the model)
             if k == 0:

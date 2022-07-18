@@ -43,16 +43,16 @@ def circuit_ising(N, params):
     # No wire will be measured until the end, the array of active
     # wire will correspont to np.arange(N) throughout the whole circuit
     active_wires = np.arange(N)
-    
-    index = circuits.wall_RY(active_wires, params)
+    index = 0
+    #index = circuits.wall_gate(active_wires, qml.RY, params, index)
+    #index = circuits.wall_gate(active_wires, qml.RX, params, index)
+    #index = circuits.wall_gate(active_wires, qml.RY, params, index)
     qml.Barrier()
-    index = circuits.entX_neighbour(active_wires, params, index)
-    qml.Barrier()
-    index = circuits.wall_RY(active_wires, params, index)
-    qml.Barrier()
-    index = circuits.entX_neighbour(active_wires, params, index)
-    qml.Barrier()
-    index = circuits.wall_RY(active_wires, params, index)
+    for _ in range(6):
+        index = circuits.circuit_ID9(active_wires, params, index, ring = False)
+        qml.Barrier()
+        
+    index = circuits.wall_gate(active_wires, qml.RX, params, index)
     
     return index
 
@@ -86,6 +86,7 @@ def circuit_annni(N, params):
         index = circuits.entX_nextneighbour(active_wires, params, index)
         qml.Barrier()
     
+    
     index = circuits.wall_RY(active_wires, params, index)
     index = circuits.wall_RX(active_wires, params, index)
     
@@ -108,7 +109,7 @@ class vqe:
         self.n_states = Hs.n_states
         self.circuit = lambda p: circuit(self.N, p)
         self.n_params = self.circuit([0] * 10000)
-        self.vqe_states = jnp.array(np.tile(np.random.rand(self.n_params), (self.n_states, 1)))
+        self.vqe_params = jnp.array( np.random.uniform(-np.pi, np.pi, size=(self.n_states,self.n_params)) ) 
         self.device = qml.device("default.qubit.jax", wires=self.N, shots=None)
         self.MSE = []
         self.vqe_e = []
@@ -217,25 +218,19 @@ class vqe:
 
         # Prepare initial parameters randomly for each datapoint/state
         # We start from the same datapoint
-        params = copy.copy(self.vqe_states)
+        params = copy.copy(self.vqe_params)
 
         if not recycle:
             self.recycle = False
             oom = False
             jv_fidelties = jax.jit(lambda true, pars: losses.vqe_fidelties(true, pars, vqe_state) )
             
-            # Regularizator of the optimizer
-            def compute_diff_states(states):
-                return jnp.mean(jnp.square(jnp.diff(jnp.real(states), axis=1)))
-
             def loss(params):
                 pred_states = v_vqe_state(params)
                 vqe_e = v_compute_E(pred_states, self.Hs.mat_Hs)
 
                 if reg != 0:
-                    return jnp.mean(jnp.real(vqe_e)) + reg * compute_diff_states(
-                        pred_states
-                    )
+                    return jnp.mean(jnp.real(vqe_e)) + reg * losses.vqe_fidelties_neighbouring(pred_states)
                 else:
                     return jnp.mean(jnp.real(vqe_e))
 
@@ -292,9 +287,7 @@ class vqe:
                 pred_state = j_vqe_state(param)
                 vqe_e = j_compute_E(pred_state, Hmat)
                 
-                param_diff = jnp.mean(jnp.square(jnp.real(pred_state - previous_state)))
-                
-                return jnp.real(vqe_e) + reg * param_diff
+                return jnp.real(vqe_e) + reg * jnp.square(jnp.abs(jnp.conj(pred_state) @  previous_state))
             
             def loss(param, Hmat):
                 pred_state = j_vqe_state(param)
@@ -351,7 +344,7 @@ class vqe:
             params = jnp.array(params)
 
         self.MSE = MSE
-        self.vqe_states = params
+        self.vqe_params = params
         
         if not oom:
             self.vqe_e = j_v_compute_vqe_E(params)
@@ -373,7 +366,7 @@ class vqe:
         """
         things_to_save = [
             self.Hs,
-            self.vqe_states,
+            self.vqe_params,
             self.circuit_fun
         ]
 
@@ -398,9 +391,9 @@ def load_vqe(filename):
     with open(filename, "rb") as f:
         things_to_load = pickle.load(f)
 
-    Hs, vqe_states, circuit_fun = things_to_load
+    Hs, vqe_params, circuit_fun = things_to_load
 
     loaded_vqe = vqe(Hs, circuit_fun)
-    loaded_vqe.vqe_states = vqe_states
+    loaded_vqe.vqe_params = vqe_params
     
     return loaded_vqe

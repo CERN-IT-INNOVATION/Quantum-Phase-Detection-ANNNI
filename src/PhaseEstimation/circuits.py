@@ -5,9 +5,204 @@ import jax.numpy as jnp
 
 ##############
 
-def wall_RZ(active_wires, params, index=0):
+def wall_gate(active_wires, gate, params, index=0):
     """
     Apply independent RZ rotations to each wire in a Pennylane circuit
+
+    Parameters
+    ----------
+    active_wires : np.ndarray
+        Array of wires that are not measured
+    params: np.ndarray
+        Array of parameters/rotation for the circuit
+    index: int
+        Index from where to pick the elements from the params array
+
+    Returns
+    -------
+    int
+        Updated starting index of params array for further rotations
+    """
+    # Apply RY to each (active) wire:
+    for i, spin in enumerate(active_wires):
+        gate(params[index + i], wires=int(spin) )
+
+    return index + len(active_wires)
+
+def wall_CZ_consecutives(active_wires):
+    """
+    Apply independent RZ rotations to each wire in a Pennylane circuit
+
+    Parameters
+    ----------
+    active_wires : np.ndarray
+        Array of wires that are not measured
+    params: np.ndarray
+        Array of parameters/rotation for the circuit
+    index: int
+        Index from where to pick the elements from the params array
+
+    Returns
+    -------
+    int
+        Updated starting index of params array for further rotations
+    """
+    # Apply RY to each (active) wire:
+    for spin, spin_next in zip(active_wires, active_wires[1:]):
+        qml.CZ(wires=[int(spin), int(spin_next)] )
+        
+def wall_CY_consecutives(active_wires):
+    """
+    Apply independent RZ rotations to each wire in a Pennylane circuit
+
+    Parameters
+    ----------
+    active_wires : np.ndarray
+        Array of wires that are not measured
+    params: np.ndarray
+        Array of parameters/rotation for the circuit
+    index: int
+        Index from where to pick the elements from the params array
+
+    Returns
+    -------
+    int
+        Updated starting index of params array for further rotations
+    """
+    # Apply RY to each (active) wire:
+    for spin, spin_next in zip(active_wires, active_wires[1:]):
+        qml.CY(wires=[int(spin), int(spin_next)] )
+
+def wall_CNOT_consecutives(active_wires, ring = False):
+    """
+    Apply independent RZ rotations to each wire in a Pennylane circuit
+
+    Parameters
+    ----------
+    active_wires : np.ndarray
+        Array of wires that are not measured
+    params: np.ndarray
+        Array of parameters/rotation for the circuit
+    index: int
+        Index from where to pick the elements from the params array
+
+    Returns
+    -------
+    int
+        Updated starting index of params array for further rotations
+    """
+    # Apply RY to each (active) wire:
+    for spin, spin_next in zip(active_wires, active_wires[1:]):
+        qml.CNOT(wires=[int(spin), int(spin_next)] )
+    if ring:
+        qml.CNOT(wires=[int(active_wires[-1]),int(active_wires[0])])
+        
+def wall_CNOT_all(active_wires, going_down = True):
+    """
+    Apply independent RZ rotations to each wire in a Pennylane circuit
+
+    Parameters
+    ----------
+    active_wires : np.ndarray
+        Array of wires that are not measured
+    params: np.ndarray
+        Array of parameters/rotation for the circuit
+    index: int
+        Index from where to pick the elements from the params array
+
+    Returns
+    -------
+    int
+        Updated starting index of params array for further rotations
+    """
+    for k, spin in enumerate(active_wires):
+        for spin_next in active_wires[k+1:]:
+            if going_down:
+                qml.CNOT(wires=[int(spin), int(spin_next)] )
+            else:
+                qml.CNOT(wires=[int(spin_next), int(spin)] )
+
+def wall_Hadamard(active_wires):
+    """
+    Apply independent RZ rotations to each wire in a Pennylane circuit
+
+    Parameters
+    ----------
+    active_wires : np.ndarray
+        Array of wires that are not measured
+    params: np.ndarray
+        Array of parameters/rotation for the circuit
+    index: int
+        Index from where to pick the elements from the params array
+
+    Returns
+    -------
+    int
+        Updated starting index of params array for further rotations
+    """
+    # Apply RY to each (active) wire:
+    for spin in active_wires:
+        qml.Hadamard(wires=int(spin) )
+
+def wall_cgate_consecutives(active_wires, cgate, params, index=0, going_down = True):
+    """
+    Apply independent RZ rotations to each wire in a Pennylane circuit
+
+    Parameters
+    ----------
+    active_wires : np.ndarray
+        Array of wires that are not measured
+    params: np.ndarray
+        Array of parameters/rotation for the circuit
+    index: int
+        Index from where to pick the elements from the params array
+
+    Returns
+    -------
+    int
+        Updated starting index of params array for further rotations
+    """
+    # Apply RY to each (active) wire:
+    for i, (spin, spin_next) in enumerate(zip(active_wires, active_wires[1:])):
+        if going_down:
+            cgate(params[index + i], wires=[int(spin), int(spin_next)] )
+        else:
+            cgate(params[index + i], wires=[int(spin_next), int(spin)] )
+    return index + i + 1
+
+def wall_cgate_all(active_wires, cgate, params, index=0, going_down = True):
+    """
+    Apply independent RZ rotations to each wire in a Pennylane circuit
+
+    Parameters
+    ----------
+    active_wires : np.ndarray
+        Array of wires that are not measured
+    params: np.ndarray
+        Array of parameters/rotation for the circuit
+    index: int
+        Index from where to pick the elements from the params array
+
+    Returns
+    -------
+    int
+        Updated starting index of params array for further rotations
+    """
+    # Apply RY to each (active) wire:
+    i = 0
+    for k, spin in enumerate(active_wires):
+        for spin_next in active_wires[k+1:]:
+            if going_down:
+                cgate(params[index + i], wires=[int(spin), int(spin_next)] )
+            else:
+                cgate(params[index + i], wires=[int(spin_next), int(spin)] )
+            i += 1
+
+    return index + i + 1
+
+def wall_RZ(active_wires, params, index=0):
+    """
+    Apply independent RY rotations to each wire in a Pennylane circuit
 
     Parameters
     ----------
@@ -189,6 +384,12 @@ def entX_nextneighbour(active_wires, params, index = 0):
         
     return index + i + 1
 
+def circuit_ID9(active_wires, params, index = 0, ring = False):
+    wall_Hadamard(active_wires)
+    wall_CNOT_consecutives(active_wires, ring = ring)
+    index = wall_gate(active_wires, qml.RY, params, index)
+    
+    return index
 
 def pooling(active_wires, qmlrot_func, params, index = 0):
     """

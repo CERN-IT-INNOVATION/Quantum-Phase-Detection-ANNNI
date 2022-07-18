@@ -63,7 +63,7 @@ def encoder_entanglement(wires, wires_trash, shift = 0):
         
         qml.CNOT(wires=[int(wire), int(wires_trash[trash_idx])])      
 
-def encoder_circuit(N, vqe_circuit, vqe_params, params):
+def encoder_circuit(N, params):
     """
     Building function for the circuit:
           VQE(params_vqe) + Encoder(params)
@@ -97,9 +97,6 @@ def encoder_circuit(N, vqe_circuit, vqe_params, params):
         (np.arange(0, n_wires // 2 + n_wires % 2), np.arange(N - n_wires // 2, N))
     )
     wires_trash = np.setdiff1d(active_wires, wires)
-
-    vqe_circuit(N, vqe_params)
-
     # Visual Separation VQE||Anomaly
     qml.Barrier()
     qml.Barrier()
@@ -124,16 +121,15 @@ class encoder:
         self.N = vqe.N
         self.vqe = vqe
         self.n_states = vqe.n_states
-        self.circuit = lambda vqe_p, enc_p: encoder_circuit(
-            self.N, vqe.circuit_fun, vqe_p, enc_p
+        self.encoder_circuit_fun = lambda enc_p: encoder_circuit(
+            self.N, enc_p
         )
-        self.n_params = self.circuit([0] * 10000, [0] * 10000)
-        self.params = np.array([np.pi / 4] * self.n_params)
+        self.n_params = self.encoder_circuit_fun([0] * 10000)
+        self.params = np.array(np.random.rand(self.n_params) )
         self.device = vqe.device
 
-        self.vqe_states = np.array(vqe.vqe_states)
+        self.vqe_params = np.array(vqe.vqe_params)
         self.train_index = []
-        self.circuit_fun = encoder_circuit
         self.n_wires = self.N // 2 + self.N % 2
         self.n_trash = self.N // 2
         self.wires = np.concatenate(
@@ -143,22 +139,24 @@ class encoder:
             )
         )
         self.wires_trash = np.setdiff1d(np.arange(self.N), self.wires)
-
-    def show_circuit(self):
-        """
-        Prints the current circuit defined by self.circuit
-        """
-
+        
         @qml.qnode(self.device, interface="jax")
-        def enc_state(self):
-            self.circuit([0] * 1000, np.arange(self.n_params))
+        def circuit_drawer(self):
+            self.encoder_circuit_fun(np.arange(self.n_params))
+            
+            return [qml.expval(qml.PauliZ(int(k))) for k in self.wires_trash]
+            
+        self.drawer = qml.draw(circuit_drawer)(self)
+        
+    def vqe_enc_circuit(self, vqe_p, qcnn_p):
+        self.vqe.circuit(vqe_p)
+        self.encoder_circuit_fun(qcnn_p)
 
-            return qml.state()
-
-        drawer = qml.draw(enc_state)
-        print(drawer(self))
-
-    def train(self, lr, n_epochs, train_index, circuit=False, plot=False):
+    def psi_enc_circuit(self, psi, qcnn_p):
+        qml.QubitStateVector(psi, wires=[int(k) for k in range(self.N)])
+        self.encoder_circuit_fun(qcnn_p)
+        
+    def train(self, lr, n_epochs, train_index, circuit=False, plot=False, inject=False):
         """
         Training function for the Anomaly Detector.
 
@@ -179,16 +177,37 @@ class encoder:
         if circuit:
             # Display the circuit
             print("+--- CIRCUIT ---+")
-            self.show_circuit()
+            print(self.drawer)
 
-        X_train = jnp.array(self.vqe_states[train_index])
+        if not inject:
+            X_train = jnp.array(self.vqe_params[train_index])
 
-        @qml.qnode(self.device, interface="jax")
-        def q_encoder_circuit(vqe_params, params):
-            self.circuit(vqe_params, params)
+            @qml.qnode(self.device, interface="jax")
+            def q_encoder_circuit(vqe_params, params):
+                self.vqe_enc_circuit(vqe_params, params)
+                
+                # return <psi|H|psi>
+                return [qml.expval(qml.PauliZ(int(k))) for k in self.wires_trash]
+        else:
+            psi = []
+            for h in self.vqe.Hs.mat_Hs:
+                # Compute eigenvalues and eigenvectors
+                eigval, eigvec = jnp.linalg.eigh(h)
+                # Get the eigenstate to the lowest eigenvalue
+                gstate = eigvec[:,jnp.argmin(eigval)]
 
-            # return <psi|H|psi>
-            return [qml.expval(qml.PauliZ(int(k))) for k in self.wires_trash]
+                psi.append(gstate)
+            psi = jnp.array(psi)
+            self.psi = psi
+            
+            X_train = jnp.array(psi[train_index]) 
+
+            @qml.qnode(self.device, interface="jax")
+            def q_encoder_circuit(psi, params):
+                self.psi_enc_circuit(psi, params)
+                
+                # return <psi|H|psi>
+                return [qml.expval(qml.PauliZ(int(k))) for k in self.wires_trash]            
 
         v_q_encoder_circuit = jax.vmap(
             lambda p, x: q_encoder_circuit(x, p), in_axes=(None, 0)
