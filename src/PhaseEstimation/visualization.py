@@ -269,19 +269,21 @@ def show_VQE_trajectory(vqeclass, idx):
     plt.legend()
     plt.show()
     
-def show_QCNN_classification1D(qcnnclass):
+def show_QCNN_classification1D(qcnnclass, inject = False):
     """
     Plots performance of the classifier on the whole data
     """
     train_index = qcnnclass.train_index
 
+    circuit = qcnnclass.vqe_qcnn_circuit if inject == False else qcnnclass.psi_qcnn_circuit
+    
     @qml.qnode(qcnnclass.device, interface="jax")
     def qcnn_circuit_prob(params_vqe, params):
-        qcnnclass.circuit(params_vqe, params)
+        circuit(params_vqe, params)
 
         return qml.probs(wires=qcnnclass.N - 1)
 
-    test_index = np.setdiff1d(np.arange(len(qcnnclass.vqe_states)), train_index)
+    test_index = np.setdiff1d(np.arange(len(qcnnclass.vqe_params)), train_index)
 
     predictions_train = []
     predictions_test = []
@@ -290,7 +292,25 @@ def show_QCNN_classification1D(qcnnclass):
     colors_test = []
 
     vcircuit = jax.vmap(lambda v: qcnn_circuit_prob(v, qcnnclass.params), in_axes=(0))
-    predictions = vcircuit(qcnnclass.vqe_states)[:, 1]
+    
+    if not inject:
+        predictions = vcircuit(qcnnclass.vqe_params)[:, 1]
+    else:
+        try:
+            qcnnclass.psi
+        except:
+            psi = []
+            for h in qcnnclass.vqe.Hs.mat_Hs:
+                # Compute eigenvalues and eigenvectors
+                eigval, eigvec = jnp.linalg.eigh(h)
+                # Get the eigenstate to the lowest eigenvalue
+                gstate = eigvec[:,jnp.argmin(eigval)]
+
+                psi.append(gstate)
+            psi = jnp.array(psi)
+            qcnnclass.psi = psi
+            
+        predictions = vcircuit(qcnnclass.psi)[:, 1]
 
     for i, prediction in enumerate(predictions):
         # if data in training set
@@ -328,13 +348,13 @@ def show_QCNN_classification1D(qcnnclass):
     ax[0].set_ylabel("Prediction of label II")
     ax[0].set_title("Predictions of labels; J = 1")
     ax[0].scatter(
-        2 * np.sort(train_index) / len(qcnnclass.vqe_states),
+        2 * np.sort(train_index) / len(qcnnclass.vqe_params),
         predictions_train,
         c="royalblue",
         label="Training samples",
     )
     ax[0].scatter(
-        2 * np.sort(test_index) / len(qcnnclass.vqe_states),
+        2 * np.sort(test_index) / len(qcnnclass.vqe_params),
         predictions_test,
         c="orange",
         label="Test samples",
@@ -352,15 +372,16 @@ def show_QCNN_classification1D(qcnnclass):
     ax[1].set_ylabel("Prediction of label II")
     ax[1].set_title("Predictions of labels; J = 1")
     ax[1].scatter(
-        2 * np.sort(train_index) / len(qcnnclass.vqe_states),
+        2 * np.sort(train_index) / len(qcnnclass.vqe_params),
         predictions_train,
         c=colors_train,
     )
     ax[1].scatter(
-        2 * np.sort(test_index) / len(qcnnclass.vqe_states),
+        2 * np.sort(test_index) / len(qcnnclass.vqe_params),
         predictions_test,
         c=colors_test,
     )
+    
     
 def show_VQE_crossfidelties(vqeclass):
     heatmap = np.zeros((vqeclass.n_states,vqeclass.n_states))
@@ -372,5 +393,184 @@ def show_VQE_crossfidelties(vqeclass):
     plt.imshow(heatmap)
     plt.clim(0,1)
     plt.colorbar()
+    plt.show() 
     
     print('Mean Cross Fidelty: {0}'.format(np.mean(heatmap)) )
+    
+    neighbouring_fidelties = []
+    for state_prev, state in zip(np.array(vqeclass.states), np.array(vqeclass.states)[1:]):
+        neighbouring_fidelties.append(np.square(np.abs( np.conj(state_prev) @ state )) )
+        
+    plt.plot(neighbouring_fidelties)
+    plt.title('Fidelties beetween a state and his next one')
+    plt.xlabel('State #')
+    plt.ylabel('F')
+    plt.show()
+    
+    true_states = []
+    for h in vqeclass.Hs.mat_Hs:
+        # Compute eigenvalues and eigenvectors
+        eigval, eigvec = jnp.linalg.eigh(h)
+        # Get the eigenstate to the lowest eigenvalue
+        gstate = eigvec[:,jnp.argmin(eigval)]
+
+        true_states.append(gstate)
+        
+    vqe_true_fidelties = []
+    for state_vqe, state_true in zip(np.array(vqeclass.states), np.array(true_states)):
+        vqe_true_fidelties.append(np.square(np.abs( np.conj(state_vqe) @ state_true )) )
+        
+    plt.plot(vqe_true_fidelties)
+    plt.show()
+    
+def show_true_crossfidelties(H, show_energy = False):
+    heatmap = np.zeros((H.n_states,H.n_states))
+    true_states = []
+    
+    for h in H.mat_Hs:
+        # Compute eigenvalues and eigenvectors
+        eigval, eigvec = jnp.linalg.eigh(h)
+        # Get the eigenstate to the lowest eigenvalue
+        gstate = eigvec[:,jnp.argmin(eigval)]
+
+        true_states.append(gstate)
+    
+    for j, state1 in enumerate(true_states):
+        for k, state2 in enumerate(true_states):
+            heatmap[j,k] = np.square(np.abs( np.conj(state1) @ state2 ))
+            
+    plt.imshow(heatmap)
+    plt.clim(0,1)
+    plt.colorbar()
+    plt.show()
+    
+    print('Mean Cross Fidelty: {0}'.format(np.mean(heatmap)) )
+    
+    neighbouring_fidelties = []
+    for state_prev, state in zip(np.array(true_states), np.array(true_states)[1:]):
+        neighbouring_fidelties.append(np.square(np.abs( np.conj(state_prev) @ state )) )
+        
+    plt.plot(neighbouring_fidelties)
+    plt.title('Fidelties beetween a state and his next one')
+    plt.xlabel('State #')
+    plt.ylabel('F')
+    plt.show()
+        
+    if show_energy:
+        true_E = []
+        for gstate, h in zip(true_states, H.mat_Hs):
+            true_E.append( np.real( np.conj(gstate) @ h @ gstate ) )
+            
+        plt.plot(true_E)
+        plt.show()
+        
+def show_compression_isingchain(encclass, inject = False):
+    '''
+    Shows result of compression of the Anomaly Detector
+    '''
+    train_index = encclass.train_index
+
+    if not inject:
+        X_train = jnp.array(encclass.vqe_params[train_index])
+        test_index = np.setdiff1d(np.arange(len(encclass.vqe_params)), train_index)
+        X_test = jnp.array(encclass.vqe_params[test_index])
+
+        @qml.qnode(encclass.device, interface="jax")
+        def encoder_circuit(vqe_params, params):
+            encclass.vqe_enc_circuit(vqe_params, params)
+
+            return [qml.expval(qml.PauliZ(int(k))) for k in encclass.wires_trash]
+    else:
+        try:
+            qcnnclass.psi
+        except:
+            psi = []
+            for h in encclass.vqe.Hs.mat_Hs:
+                # Compute eigenvalues and eigenvectors
+                eigval, eigvec = jnp.linalg.eigh(h)
+                # Get the eigenstate to the lowest eigenvalue
+                gstate = eigvec[:,jnp.argmin(eigval)]
+
+                psi.append(gstate)
+            psi = jnp.array(psi)
+            encclass.psi = psi
+            
+        X_train = jnp.array(encclass.psi[train_index])
+        test_index = np.setdiff1d(np.arange(len(encclass.psi)), train_index)
+        X_test = jnp.array(encclass.psi[test_index])
+
+        @qml.qnode(encclass.device, interface="jax")
+        def encoder_circuit(psi, params):
+            encclass.psi_enc_circuit(psi, params)
+
+            return [qml.expval(qml.PauliZ(int(k))) for k in encclass.wires_trash]
+
+    v_encoder_circuit = jax.vmap(lambda x: encoder_circuit(x, encclass.params))
+
+    exps_train = (1 - np.sum(v_encoder_circuit(X_train), axis=1) / 4) / 2
+    exps_test = (1 - np.sum(v_encoder_circuit(X_test), axis=1) / 4) / 2
+
+    plt.figure(figsize=(10, 3))
+    plt.scatter(train_index, exps_train)
+    plt.scatter(
+        np.setdiff1d(np.arange(len(X_train) + len(X_test)), train_index),
+        exps_test,
+        label="Test",
+    )
+    plt.axvline(x=len(encclass.vqe_params) // 2, color="red", linestyle="--")
+    plt.legend()
+    plt.grid(True)
+    
+def show_compression_annni(encclass, inject = False, plot3d = False):
+    '''
+    Shows result of compression of the Anomaly Detector
+    '''
+    side = int(np.sqrt(encclass.n_states))
+    
+    if not inject:
+        X = jnp.array(encclass.vqe_params)
+
+        @qml.qnode(encclass.device, interface="jax")
+        def encoder_circuit(vqe_params, params):
+            encclass.vqe_enc_circuit(vqe_params, params)
+
+            return [qml.expval(qml.PauliZ(int(k))) for k in encclass.wires_trash]
+    else:
+        try:
+            qcnnclass.psi
+        except:
+            psi = []
+            for h in encclass.vqe.Hs.mat_Hs:
+                # Compute eigenvalues and eigenvectors
+                eigval, eigvec = jnp.linalg.eigh(h)
+                # Get the eigenstate to the lowest eigenvalue
+                gstate = eigvec[:,jnp.argmin(eigval)]
+
+                psi.append(gstate)
+            psi = jnp.array(psi)
+            encclass.psi = psi
+            
+        X = jnp.array(encclass.psi)
+
+        @qml.qnode(encclass.device, interface="jax")
+        def encoder_circuit(psi, params):
+            encclass.psi_enc_circuit(psi, params)
+
+            return [qml.expval(qml.PauliZ(int(k))) for k in encclass.wires_trash]
+
+    v_encoder_circuit = jax.vmap(lambda x: encoder_circuit(x, encclass.params))
+
+    exps = (1 - np.sum(v_encoder_circuit(X), axis=1) / 4) / 2
+    
+    exps = np.rot90( np.reshape(exps, (side,side)) )
+    
+    if plot3d:
+        x = np.linspace(1, 0, side)
+        y = np.linspace(0, 2, side)
+
+        fig = go.Figure(data=[go.Surface(z=exps, x=x, y=y)])
+        fig.update_layout(height=500)
+        fig.show()
+    else:
+        plt.imshow(exps)
+        plt.colorbar()

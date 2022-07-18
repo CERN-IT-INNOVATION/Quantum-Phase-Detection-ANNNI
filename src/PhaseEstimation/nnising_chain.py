@@ -49,7 +49,7 @@ def build_Hs(N, n_states, J1 = 1):
     J1 : float
         Interaction strenght between nearest spins
     """
-    js = np.linspace(0, 1*J1, n_states)
+    js = np.linspace(0, -1*J1, n_states)
     
     Hs     = []
     labels = []

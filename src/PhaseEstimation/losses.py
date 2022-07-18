@@ -13,6 +13,15 @@ def vqe_fidelties(Y, params, q_circuit):
 
     return jnp.mean(v_fidelty(Y, params))
 
+def vqe_fidelties_neighbouring(states):
+    def vqe_fidelty(s1, s2):
+        return jnp.square(jnp.abs(jnp.conj(s1) @  s2))
+    
+    v_fidelty = jax.vmap(lambda s1, s2: vqe_fidelty(s1,s2), in_axes = (0, 0) )
+
+    
+    return jnp.mean(v_fidelty(states[:-1], states[1:]))
+
 # QCNN LOSSES
 def cross_entropy(X, Y, params, q_circuit):
     v_qcnn_prob = jax.vmap(lambda v: q_circuit(v, params))

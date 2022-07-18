@@ -4,7 +4,7 @@ from pennylane import numpy as np
 
 ##############
 
-def get_H(N, lam, J):
+def get_H(N, lam, J, ring = False):
     """
     Set up Hamiltonian:
             H = -lam*Σsigma^i_z - J*Σsigma^i_x*sigma_x^{i+1}
@@ -31,10 +31,13 @@ def get_H(N, lam, J):
     # Interaction between spins:
     for i in range(0, N - 1):
         H = H + J * (-1) * (qml.PauliX(i) @ qml.PauliX(i + 1))
+        
+    if ring:
+        H = H + J * (-1) * (qml.PauliX(0) @ qml.PauliX(N-1) )
 
     return H
 
-def build_Hs(N, J, n_states):
+def build_Hs(N, J, n_states, ring = False):
     """
     Sets up np.ndarray of pennylane Hamiltonians with different instensity of magnetic field mu in np.linspace(0, 2*J, n_states)
     
@@ -53,7 +56,7 @@ def build_Hs(N, J, n_states):
     labels = []
     ising_params = []
     for lam in lams:
-        Hs.append(get_H(int(N), float(lam), float(J)) )
+        Hs.append(get_H(int(N), float(lam), float(J), ring) )
         labels.append(0) if lam <= J else labels.append(1)
         ising_params.append([N, J, lam])
         
