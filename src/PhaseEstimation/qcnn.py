@@ -27,19 +27,16 @@ import PhaseEstimation.circuits as circuits
 
 def qcnn_circuit(params, N, n_outputs):
     """
-    Building function for the circuit:
-          VQE(params_vqe) + QCNN(params)
-
+    Building function for the QCNN circuit:
+    
     Parameters
     ----------
-    params_vqe : np.ndarray
-        Array of VQE parameters (states)
-    vqe_circuit_fun : function
-        Function of the VQE circuit
     params : np.ndarray
         Array of QCNN parameters
     N : int
         Number of qubits
+    n_outputs : int
+        Output vector dimension
 
     Returns
     -------
@@ -71,7 +68,6 @@ def qcnn_circuit(params, N, n_outputs):
     # Return the number of parameters
     return index + 1
 
-
 class qcnn:
     def __init__(self, vqe, qcnn_circuit, n_outputs = 1):
         """
@@ -83,6 +79,8 @@ class qcnn:
             VQE class
         qcnn_circuit :
             Function of the QCNN circuit
+        n_outputs : int
+            Output vector dimension
         """
         self.vqe = vqe
         self.N = vqe.N
@@ -121,15 +119,19 @@ class qcnn:
         Parameters
         ----------
         lr : float
-            Learning rate to be multiplied in the circuit-gradient output
+            Learning rate for the ADAM optimizer
         n_epochs : int
             Total number of epochs for each learning
         train_index : np.ndarray
             Index of training points
+        loss_fn : function
+            Loss function
         circuit : bool
             if True -> Prints the circuit
         plot : bool
             if True -> It displays loss curve
+        inject : bool
+            if True -> Exact ground states will be computed and used as input
         """
 
         X_train, Y_train = jnp.array(self.vqe_params[train_index]), jnp.array(

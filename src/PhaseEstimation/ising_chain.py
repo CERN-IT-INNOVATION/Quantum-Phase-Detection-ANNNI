@@ -17,6 +17,8 @@ def get_H(N, lam, J, ring = False):
         Strenght of (transverse) magnetic field
     J : float
         Interaction strenght between spins
+    ring : bool
+        If False, system has open-boundaries condition
 
     Returns
     -------
@@ -33,7 +35,8 @@ def get_H(N, lam, J, ring = False):
         H = H + J * (-1) * (qml.PauliX(i) @ qml.PauliX(i + 1))
         
     if ring:
-        H = H + J * (-1) * (qml.PauliX(0) @ qml.PauliX(N-1) )
+        # Set interaction between first and last spin
+        H = H + J * (-1) * (qml.PauliX(N-1) @ qml.PauliX(0) )
 
     return H
 
@@ -49,18 +52,34 @@ def build_Hs(N, J, n_states, ring = False):
         Interaction strenght between spins
     n_states : int
         Number of Hamiltonians to generate
+        
+    Returns
+    -------
+    np.array
+        Array of pennylane Hamiltonians
+    np.array
+        Array of labels for analytical solutionss
+    np.array
+        Array for the recycle rule
+    np.array
+        Array for the states parameters
     """
+    # Array of free parameters (magnetic field)
     lams = np.linspace(0, 2*J, n_states)
     
-    Hs     = []
-    labels = []
-    ising_params = []
+    Hs     = []       # Array of pennylane hamiltonians
+    labels = []       # Array of labels:
+                      #  > 0 if magnetic field <= J
+                      #  > 1 if magnetic field >  J 
+    ising_params = [] # Array of parameters [N,J,magneticfield]
+    
     for lam in lams:
         Hs.append(get_H(int(N), float(lam), float(J), ring) )
         labels.append(0) if lam <= J else labels.append(1)
         ising_params.append([N, J, lam])
-        
+    
+    # Array of indices for the order of states to train through VQE
     recycle_rule = np.arange(n_states)
     
-    return Hs, labels, recycle_rule, ising_params
+    return np.array(Hs), np.array(labels), np.array(recycle_rule), np.array(ising_params)
 
