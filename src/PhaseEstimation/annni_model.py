@@ -104,14 +104,14 @@ def build_Hs(N, n_states, ring = False):
                     labels.append([1,1]) # Paramagnetic
             elif l == 0:
                 if k < -.5:
-                    labels.append([0,1]) # Ferromagnetic
+                    labels.append([1,0]) # Ferromagnetic
                 else:
-                    labels.append([1,0]) # Antiphase
+                    labels.append([0,1]) # Antiphase
             else:
                 labels.append([None,None])
     
     # Array of indices for the order of states to train through VQE
-    #     INDICES              RECYCLE RULE
+    #     INDICES                RECYCLE RULE
     # +---------------+       +---------------+
     # | 5  10  15  20 |       | 5  6   15  16 |
     # | 4  9   14  19 |       | 4  7   14  17 |
@@ -129,4 +129,4 @@ def build_Hs(N, n_states, ring = False):
         recycle_rule.append(np.arange((k+1)*n_states - 1, k*n_states - 1, -1) )
         k += 1
         
-    return np.array(Hs), np.array(labels), np.array(recycle_rule).flatten(), np.array(anni_params)
+    return Hs, np.array(labels), np.array(recycle_rule).flatten(), np.array(anni_params)

@@ -52,9 +52,9 @@ def autoencoder_circuit(N, vqe_circuit, vqe_params, params, decode = True):
     active_wires = np.arange(N)
     
     # Number of wires that will not be measured |phi>
-    n_wires = N - 2
+    n_wires = N - 3
     # Number of wires that will be measured |0>^k
-    n_trash = 2
+    n_trash = 3
 
     wires = np.arange(N-2)
     wires_trash = np.arange(N-2,N)
@@ -90,13 +90,13 @@ class autoencoder:
         self.params = np.array([np.pi / 4] * self.n_params)
         self.device = qml.device("default.qubit.jax", wires=2*(self.N - 1), shots=None) 
 
-        self.vqe_states = np.array(vqe.vqe_states)
+        self.vqe_params = np.array(vqe.vqe_params)
         self.train_index = []
         self.circuit_fun = encoder_circuit
-        self.n_wires = self.N - 2
-        self.n_trash = 2
-        self.wires = np.arange(self.N-2)
-        self.wires_trash = np.arange(self.N-2,self.N)
+        self.n_wires = self.N - 3
+        self.n_trash = 3
+        self.wires = np.arange(self.N-3)
+        self.wires_trash = np.arange(self.N-3,self.N)
 
     def show_circuit(self):
         """
@@ -134,7 +134,7 @@ class autoencoder:
         
         jv_fidelty = jax.jit(jax.vmap( fidelty, in_axes = (None, 0) ))
             
-        return jnp.mean(jv_fidelty(params, self.vqe.vqe_states))
+        return jnp.mean(jv_fidelty(params, self.vqe.vqe_params))
 
     def train(self, lr, n_epochs, train_index, circuit=False, plot=False):
         """
@@ -159,7 +159,7 @@ class autoencoder:
             print("+--- CIRCUIT ---+")
             self.show_circuit()
 
-        X_train = jnp.array(self.vqe_states[train_index])
+        X_train = jnp.array(self.vqe_params[train_index])
         
         @qml.qnode(self.vqe.device, interface="jax")
         def vqe_state(vqe_params):
@@ -205,7 +205,7 @@ class autoencoder:
         for epoch in range(n_epochs):
             params, opt_state = update(params, opt_state)
 
-            if (epoch + 1) % 25 == 0:
+            if (epoch + 1) % 100 == 0:
                 loss.append(j_reconstruct(params))
                 progress.set_description("Cost: {0} | Mean F. {1}".format(loss[-1], self.get_fidelties_autoencoder(params)))
             progress.update(1)

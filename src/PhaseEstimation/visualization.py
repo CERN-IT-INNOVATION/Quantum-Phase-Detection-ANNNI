@@ -4,6 +4,7 @@ import jax
 import jax.numpy as jnp
 from jax import jit
 
+import matplotlib as mpl
 from matplotlib import pyplot as plt
 from matplotlib.colors import LinearSegmentedColormap, LogNorm, Normalize
 import plotly.graph_objects as go
@@ -521,7 +522,7 @@ def show_compression_isingchain(encclass, inject = False):
     plt.legend()
     plt.grid(True)
     
-def show_compression_annni(encclass, inject = False, plot3d = False):
+def show_compression_ANNNI(encclass, inject = False, plot3d = False):
     '''
     Shows result of compression of the Anomaly Detector
     '''
@@ -574,3 +575,128 @@ def show_compression_annni(encclass, inject = False, plot3d = False):
     else:
         plt.imshow(exps)
         plt.colorbar()
+        
+def show_QCNN_classification2D(qcnnclass, inject = False):
+    """
+    Plots performance of the classifier on the whole data
+    """
+    circuit = qcnnclass.vqe_qcnn_circuit if inject == False else qcnnclass.psi_qcnn_circuit
+    
+    @qml.qnode(qcnnclass.device, interface="jax")
+    def qcnn_circuit_prob(params_vqe, params):
+        circuit(params_vqe, params)
+
+        if qcnnclass.n_outputs == 1:
+            return qml.probs(wires=self.N - 1)
+        else:
+            return [qml.probs(wires=int(k)) for k in qcnnclass.final_active_wires]
+        
+    mask1 = jnp.array(qcnnclass.vqe.Hs.model_params)[:,1] == 0
+    mask2 = jnp.array(qcnnclass.vqe.Hs.model_params)[:,2] == 0
+
+    ising_1, label_1  = qcnnclass.vqe_params[mask1], qcnnclass.labels[mask1,:].astype(int)
+    ising_2, label_2  = qcnnclass.vqe_params[mask2], qcnnclass.labels[mask2,:].astype(int)
+
+    vcircuit = jax.vmap(lambda v: qcnn_circuit_prob(v, qcnnclass.params), in_axes=(0))
+    predictions1 = vcircuit(ising_1)
+    predictions2 = vcircuit(ising_2)
+
+    out1_p1, out2_p1, c1 = [], [], []
+    for idx, pred in enumerate(predictions1):
+        out1_p1.append(pred[0][1])
+        out2_p1.append(pred[1][1])
+
+        if (np.argmax(pred[0]) == label_1[idx][0]) and (np.argmax(pred[1]) == label_1[idx][1]):
+            c1.append('green')
+        else:
+            c1.append('red')
+
+    fig, ax = plt.subplots(1, 2, figsize=(20, 6))
+
+    x = np.arange(int(np.sqrt(qcnnclass.n_states)))
+    ax[0].grid(True)
+    ax[0].scatter(x, out1_p1, c=c1)
+    ax[0].set_ylim(-.1,1.1)
+    ax[1].grid(True)
+    ax[1].scatter(x, out2_p1, c=c1)
+    ax[1].set_ylim(-.1,1.1)
+
+    plt.show()
+
+    out1_p2, out2_p2, c2 = [], [], []
+    for idx, pred in enumerate(predictions2):
+        out1_p2.append(pred[0][1])
+        out2_p2.append(pred[1][1])
+
+        if (np.argmax(pred[0]) == label_2[idx][0]) and (np.argmax(pred[1]) == label_2[idx][1]):
+            c2.append('green')
+        else:
+            c2.append('red')
+
+    fig, ax = plt.subplots(1, 2, figsize=(20, 6))
+
+    x = np.arange(int(np.sqrt(qcnnclass.n_states)))
+    ax[0].grid(True)
+    ax[0].scatter(x, out1_p2, c=c2)
+    ax[0].set_ylim(-.1,1.1)
+    ax[1].grid(True)
+    ax[1].scatter(x, out2_p2, c=c2)
+    ax[1].set_ylim(-.1,1.1)
+
+    plt.show()
+    
+def show_QCNN_classificationANNNI(qcnnclass, inject = False):
+    circuit = qcnnclass.vqe_qcnn_circuit if inject == False else qcnnclass.psi_qcnn_circuit
+    side = int(np.sqrt(qcnnclass.n_states))
+    @qml.qnode(qcnnclass.device, interface="jax")
+    def qcnn_circuit_prob(params_vqe, params):
+        circuit(params_vqe, params)
+
+        if qcnnclass.n_outputs == 1:
+            return qml.probs(wires=self.N - 1)
+        else:
+            return [qml.probs(wires=int(k)) for k in qcnnclass.final_active_wires]
+        
+    vcircuit = jax.vmap(lambda v: qcnn_circuit_prob(v, qcnnclass.params), in_axes=(0))
+    
+    if not inject:
+        predictions = np.array(np.argmax(vcircuit(qcnnclass.vqe_params), axis = 2))
+    else:
+        try:
+            qcnnclass.psi
+        except:
+            psi = []
+            for h in qcnnclass.vqe.Hs.mat_Hs:
+                # Compute eigenvalues and eigenvectors
+                eigval, eigvec = jnp.linalg.eigh(h)
+                # Get the eigenstate to the lowest eigenvalue
+                gstate = eigvec[:,jnp.argmin(eigval)]
+
+                psi.append(gstate)
+            psi = jnp.array(psi)
+            qcnnclass.psi = psi
+            
+        predictions = np.array(np.argmax(vcircuit(qcnnclass.psi), axis = 2))
+    
+    c = []
+    for pred in predictions:
+        if (pred == [0,1]).all():
+            c.append(0)
+        elif (pred == [1,1]).all():
+            c.append(1)
+        elif (pred == [1,0]).all():
+            c.append(2)
+        else: c.append(3)
+        
+    phases = mpl.colors.ListedColormap(["navy", "crimson", "limegreen", "limegreen"])
+    norm = mpl.colors.BoundaryNorm(np.arange(0,4), phases.N) 
+    plt.imshow( np.rot90(np.reshape(c, (side, side) ) ), cmap = phases, norm = norm)
+    
+    plt.title('Classification of ANNNI states')
+    plt.ylabel('L')
+    plt.xlabel('K')
+    
+    plt.yticks(np.linspace(0,side-1,5), labels = np.round(np.linspace(2,0,5),2) )
+    
+    plt.xticks(np.linspace(0,side-1,5), labels = np.round(np.linspace(0,-1,5),2) )
+    
