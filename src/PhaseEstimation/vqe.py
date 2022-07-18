@@ -1,4 +1,4 @@
-""" This module implements the base function to implement a VQE for a Ising Chain with Transverse Field. """
+""" This module implements the base function to implement a VQE for a Ising Chain. """
 import pennylane as qml
 from pennylane import numpy as np
 import jax

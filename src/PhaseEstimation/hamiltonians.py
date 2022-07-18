@@ -1,4 +1,4 @@
-""" This module implements the base Hamiltonian class"""
+""" This module implements the base class for spin-models Hamiltonians"""
 import pennylane as qml
 from pennylane import numpy as np
 import jax.numpy as jnp
