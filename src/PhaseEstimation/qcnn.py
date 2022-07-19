@@ -57,13 +57,13 @@ def qcnn_circuit(params, N, n_outputs):
     # Iterate Convolution+Pooling until we only have a single wires
     while len(active_wires) > n_outputs:
         index = circuits.convolution(active_wires, params, index)
-        qml.Barrier()
-        index, active_wires = circuits.pooling(active_wires, qml.RY, params, index)
-        qml.Barrier()
+        circuits.wall_gate(active_wires, qml.Hadamard)
         index = circuits.convolution(active_wires, params, index)
         qml.Barrier()
-        index, active_wires = circuits.pooling(active_wires, qml.RY, params, index)
+        index, active_wires = circuits.pooling(active_wires, qml.RZ, params, index)
         qml.Barrier()
+    index = circuits.wall_gate(active_wires, qml.RX, params, index)
+    index = circuits.wall_gate(active_wires, qml.RY, params, index)
 
     # Return the number of parameters
     return index + 1, active_wires
