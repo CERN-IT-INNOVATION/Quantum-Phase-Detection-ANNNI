@@ -46,7 +46,7 @@ def circuit_ising(N, params):
     index = 0
     qml.Barrier()
     for _ in range(6):
-        index = circuits.circuit_ID9(active_wires, params, index, ring = False)
+        index = circuits.circuit_ID9(active_wires, params, index)
         qml.Barrier()
         
     index = circuits.wall_gate(active_wires, qml.RX, params, index)
