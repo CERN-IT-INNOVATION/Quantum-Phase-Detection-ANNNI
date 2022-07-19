@@ -44,51 +44,12 @@ def circuit_ising(N, params):
     # wire will correspont to np.arange(N) throughout the whole circuit
     active_wires = np.arange(N)
     index = 0
-    #index = circuits.wall_gate(active_wires, qml.RY, params, index)
-    #index = circuits.wall_gate(active_wires, qml.RX, params, index)
-    #index = circuits.wall_gate(active_wires, qml.RY, params, index)
     qml.Barrier()
     for _ in range(6):
         index = circuits.circuit_ID9(active_wires, params, index, ring = False)
         qml.Barrier()
         
     index = circuits.wall_gate(active_wires, qml.RX, params, index)
-    
-    return index
-
-def circuit_annni(N, params):
-    """
-    Full VQE circuit with next neighbour IsingXX gates (for the ANNNI model)
-
-    Parameters
-    ----------
-    N : int
-        Number of qubits
-    params: np.ndarray
-        Array of parameters/rotation for the circuit
-
-    Returns
-    -------
-    int
-        Total number of parameters needed to build this circuit
-    """
-    # No wire will be measured until the end, the array of active
-    # wire will correspont to np.arange(N) throughout the whole circuit
-    active_wires = np.arange(N)
-    
-    index = circuits.wall_RY(active_wires, params)
-    qml.Barrier()
-    for _ in range(2):
-        index = circuits.entX_neighbour(active_wires, params, index)
-        qml.Barrier()
-        index = circuits.wall_RY(active_wires, params, index)
-        qml.Barrier()
-        index = circuits.entX_nextneighbour(active_wires, params, index)
-        qml.Barrier()
-    
-    
-    index = circuits.wall_RY(active_wires, params, index)
-    index = circuits.wall_RX(active_wires, params, index)
     
     return index
 
@@ -225,12 +186,15 @@ class vqe:
             oom = False
             jv_fidelties = jax.jit(lambda true, pars: losses.vqe_fidelties(true, pars, vqe_state) )
             
+            def compute_diff_states(states):
+                return jnp.mean(jnp.square(jnp.diff(jnp.real(states), axis=1)))
+            
             def loss(params):
                 pred_states = v_vqe_state(params)
                 vqe_e = v_compute_E(pred_states, self.Hs.mat_Hs)
 
                 if reg != 0:
-                    return jnp.mean(jnp.real(vqe_e)) + reg * losses.vqe_fidelties_neighbouring(pred_states)
+                    return jnp.mean(jnp.real(vqe_e)) + reg * compute_diff_states(pred_states)
                 else:
                     return jnp.mean(jnp.real(vqe_e))
 

@@ -72,7 +72,7 @@ def autoencoder_circuit(N, vqe_circuit, vqe_params, params, decode = True):
     qml.Barrier()
     
     if decode:
-        index = circuits.decoder_circuit(wires, wires_trash, wires_extra, params, index)
+        index = circuits.decoder_circuit(wires_trash, wires_extra, params, index)
 
         return index
     return index

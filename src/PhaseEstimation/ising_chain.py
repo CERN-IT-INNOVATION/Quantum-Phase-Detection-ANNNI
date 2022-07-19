@@ -81,5 +81,5 @@ def build_Hs(N, J, n_states, ring = False):
     # Array of indices for the order of states to train through VQE
     recycle_rule = np.arange(n_states)
     
-    return np.array(Hs), np.array(labels), np.array(recycle_rule), np.array(ising_params)
+    return Hs, np.array(labels), np.array(recycle_rule), np.array(ising_params)
 

@@ -1,392 +1,175 @@
-""" This module implements the base Hamiltonian class"""
+""" This module implements base circuits layout for all the models used"""
 import pennylane as qml
 from pennylane import numpy as np
 import jax.numpy as jnp
 
 ##############
 
-def wall_gate(active_wires, gate, params, index=0):
+def wall_gate(active_wires, gate, params = [], index = 0):
     """
-    Apply independent RZ rotations to each wire in a Pennylane circuit
-
+    Apply independent rotations of the same gate for all the wires (active_wires)
+    
     Parameters
     ----------
     active_wires : np.ndarray
-        Array of wires that are not measured
-    params: np.ndarray
-        Array of parameters/rotation for the circuit
-    index: int
-        Index from where to pick the elements from the params array
-
+        Array of the wires to apply the rotations to
+    gate : Pennylane gate (parametrized or not)
+        Qubit operator to apply
+    params : list
+        List of parameters of the whole circuit
+    index : int
+        Starting index for this block of operators
+    
     Returns
     -------
     int
-        Updated starting index of params array for further rotations
+        Updated index value
     """
-    # Apply RY to each (active) wire:
-    for i, spin in enumerate(active_wires):
-        gate(params[index + i], wires=int(spin) )
-
-    return index + len(active_wires)
-
-def wall_CZ_consecutives(active_wires):
+    if len(params) > 0:
+        for i, spin in enumerate(active_wires):
+            gate(params[index + i], wires = int(spin) )
+        return index + i + 1
+    
+    else:
+        for spin in active_wires:
+            gate(wires = int(spin) )
+        return index
+    
+def wall_cgate_serial(active_wires, cgate, params = [], index = 0, going_down = True):
     """
-    Apply independent RZ rotations to each wire in a Pennylane circuit
-
+    Apply drop-down controlled rotations for all the wires (active_wires)
+    
     Parameters
     ----------
     active_wires : np.ndarray
-        Array of wires that are not measured
-    params: np.ndarray
-        Array of parameters/rotation for the circuit
-    index: int
-        Index from where to pick the elements from the params array
-
+        Array of the wires to apply the rotations to
+    cgate : Pennylane gate (parametrized or not)
+        Qubit controlled operator to apply
+    params : list
+        List of parameters of the whole circuit
+    index : int
+        Starting index for this block of operators
+    going_down : bool
+        if True -> top - down, if False -> down - top
+    
     Returns
     -------
     int
-        Updated starting index of params array for further rotations
+        Updated index value
     """
-    # Apply RY to each (active) wire:
-    for spin, spin_next in zip(active_wires, active_wires[1:]):
-        qml.CZ(wires=[int(spin), int(spin_next)] )
-        
-def wall_CY_consecutives(active_wires):
-    """
-    Apply independent RZ rotations to each wire in a Pennylane circuit
-
-    Parameters
-    ----------
-    active_wires : np.ndarray
-        Array of wires that are not measured
-    params: np.ndarray
-        Array of parameters/rotation for the circuit
-    index: int
-        Index from where to pick the elements from the params array
-
-    Returns
-    -------
-    int
-        Updated starting index of params array for further rotations
-    """
-    # Apply RY to each (active) wire:
-    for spin, spin_next in zip(active_wires, active_wires[1:]):
-        qml.CY(wires=[int(spin), int(spin_next)] )
-
-def wall_CNOT_consecutives(active_wires, ring = False):
-    """
-    Apply independent RZ rotations to each wire in a Pennylane circuit
-
-    Parameters
-    ----------
-    active_wires : np.ndarray
-        Array of wires that are not measured
-    params: np.ndarray
-        Array of parameters/rotation for the circuit
-    index: int
-        Index from where to pick the elements from the params array
-
-    Returns
-    -------
-    int
-        Updated starting index of params array for further rotations
-    """
-    # Apply RY to each (active) wire:
-    for spin, spin_next in zip(active_wires, active_wires[1:]):
-        qml.CNOT(wires=[int(spin), int(spin_next)] )
-    if ring:
-        qml.CNOT(wires=[int(active_wires[-1]),int(active_wires[0])])
-        
-def wall_CNOT_all(active_wires, going_down = True):
-    """
-    Apply independent RZ rotations to each wire in a Pennylane circuit
-
-    Parameters
-    ----------
-    active_wires : np.ndarray
-        Array of wires that are not measured
-    params: np.ndarray
-        Array of parameters/rotation for the circuit
-    index: int
-        Index from where to pick the elements from the params array
-
-    Returns
-    -------
-    int
-        Updated starting index of params array for further rotations
-    """
-    for k, spin in enumerate(active_wires):
-        for spin_next in active_wires[k+1:]:
-            if going_down:
-                qml.CNOT(wires=[int(spin), int(spin_next)] )
-            else:
-                qml.CNOT(wires=[int(spin_next), int(spin)] )
-
-def wall_Hadamard(active_wires):
-    """
-    Apply independent RZ rotations to each wire in a Pennylane circuit
-
-    Parameters
-    ----------
-    active_wires : np.ndarray
-        Array of wires that are not measured
-    params: np.ndarray
-        Array of parameters/rotation for the circuit
-    index: int
-        Index from where to pick the elements from the params array
-
-    Returns
-    -------
-    int
-        Updated starting index of params array for further rotations
-    """
-    # Apply RY to each (active) wire:
-    for spin in active_wires:
-        qml.Hadamard(wires=int(spin) )
-
-def wall_cgate_consecutives(active_wires, cgate, params, index=0, going_down = True):
-    """
-    Apply independent RZ rotations to each wire in a Pennylane circuit
-
-    Parameters
-    ----------
-    active_wires : np.ndarray
-        Array of wires that are not measured
-    params: np.ndarray
-        Array of parameters/rotation for the circuit
-    index: int
-        Index from where to pick the elements from the params array
-
-    Returns
-    -------
-    int
-        Updated starting index of params array for further rotations
-    """
-    # Apply RY to each (active) wire:
-    for i, (spin, spin_next) in enumerate(zip(active_wires, active_wires[1:])):
-        if going_down:
-            cgate(params[index + i], wires=[int(spin), int(spin_next)] )
-        else:
-            cgate(params[index + i], wires=[int(spin_next), int(spin)] )
-    return index + i + 1
-
-def wall_cgate_all(active_wires, cgate, params, index=0, going_down = True):
-    """
-    Apply independent RZ rotations to each wire in a Pennylane circuit
-
-    Parameters
-    ----------
-    active_wires : np.ndarray
-        Array of wires that are not measured
-    params: np.ndarray
-        Array of parameters/rotation for the circuit
-    index: int
-        Index from where to pick the elements from the params array
-
-    Returns
-    -------
-    int
-        Updated starting index of params array for further rotations
-    """
-    # Apply RY to each (active) wire:
-    i = 0
-    for k, spin in enumerate(active_wires):
-        for spin_next in active_wires[k+1:]:
+    if len(params) > 0:
+        for i, (spin, spin_next) in enumerate(zip(active_wires, active_wires[1:])):
             if going_down:
                 cgate(params[index + i], wires=[int(spin), int(spin_next)] )
             else:
                 cgate(params[index + i], wires=[int(spin_next), int(spin)] )
-            i += 1
-
-    return index + i + 1
-
-def wall_RZ(active_wires, params, index=0):
+        return index + i + 1
+    else:
+        for spin, spin_next in zip(active_wires, active_wires[1:]):
+            if going_down:
+                cgate(wires=[int(spin), int(spin_next)] )
+            else:
+                cgate(wires=[int(spin_next), int(spin)] )
+        return index
+    
+def wall_cgate_all(active_wires, cgate, params = [], index = 0, going_down = True):
     """
-    Apply independent RY rotations to each wire in a Pennylane circuit
-
-    Parameters
-    ----------
-    active_wires : np.ndarray
-        Array of wires that are not measured
-    params: np.ndarray
-        Array of parameters/rotation for the circuit
-    index: int
-        Index from where to pick the elements from the params array
-
-    Returns
-    -------
-    int
-        Updated starting index of params array for further rotations
-    """
-    # Apply RY to each (active) wire:
-    for i, spin in enumerate(active_wires):
-        qml.RZ(params[index + i], wires=int(spin) )
-
-    return index + len(active_wires)
-
-def wall_RY(active_wires, params, index=0):
-    """
-    Apply independent RY rotations to each wire in a Pennylane circuit
-
-    Parameters
-    ----------
-    active_wires : np.ndarray
-        Array of wires that are not measured
-    params: np.ndarray
-        Array of parameters/rotation for the circuit
-    index: int
-        Index from where to pick the elements from the params array
-
-    Returns
-    -------
-    int
-        Updated starting index of params array for further rotations
-    """
-    # Apply RY to each (active) wire:
-    for i, spin in enumerate(active_wires):
-        qml.RY(params[index + i], wires=int(spin) )
-
-    return index + len(active_wires)
-
-def wall_RX(active_wires, params, index=0):
-    """
-    Apply independent RX rotations to each wire in a Pennylane circuit
-
-    Parameters
-    ----------
-    active_wires : np.ndarray
-        Array of wires that are not measured
-    params: np.ndarray
-        Array of parameters/rotation for the circuit
-    index: int
-        Index from where to pick the elements from the params array
-
-    Returns
-    -------
-    int
-        Updated starting index of params array for further rotations
-    """
-    # Apply RX to each (active) wire:
-    for i, spin in enumerate(active_wires):
-        qml.RX(params[index + i], wires=int(spin) )
-
-    return index + len(active_wires)
-
-def CRX_neighbour(active_wires, params, index=0):
-    """
-    Apply independent RX rotations to each wire in a Pennylane circuit
-
-    Parameters
-    ----------
-    active_wires : np.ndarray
-        Array of wires that are not measured
-    params: np.ndarray
-        Array of parameters/rotation for the circuit
-    index: int
-        Index from where to pick the elements from the params array
-
-    Returns
-    -------
-    int
-        Updated starting index of params array for further rotations
-    """
-    # Apply RX to each (active) wire:
-    for i, (spin, spin_next) in enumerate(zip(active_wires, active_wires[1:])):
-        qml.CRX(params[index + i], wires=[int(spin), int(spin_next)])
-
-    return index + i + 1
-
-def CRX_nextneighbour(active_wires, params, index=0):
-    """
-    Apply independent RX rotations to each wire in a Pennylane circuit
-
-    Parameters
-    ----------
-    active_wires : np.ndarray
-        Array of wires that are not measured
-    params: np.ndarray
-        Array of parameters/rotation for the circuit
-    index: int
-        Index from where to pick the elements from the params array
-
-    Returns
-    -------
-    int
-        Updated starting index of params array for further rotations
-    """
-    # Apply RX to each (active) wire:
-    for i, (spin, spin_next) in enumerate(zip(active_wires, active_wires[2:])):
-        qml.CRX(params[index + i], wires = [int(spin), int(spin_next)])
-        
-    return index + i + 1
-
-
-def wall_CNOT(active_wires):
-    """
-    Apply CNOTs to every neighbouring (active) qubits
-
-    Parameters
-    ----------
-    N : int
-        Number of qubits
-    """
-    # Apply entanglement to the neighbouring spins
-    for spin, spin_next in zip(active_wires, active_wires[1:]):
-        qml.CNOT(wires=[int(spin), int(spin_next)])
-
-def entX_neighbour(active_wires, params, index = 0):
-    """ 
-    Establish entanglement between qubits using IsingXX gates
+    Apply controlled rotations across all the wires (active_wires)
     
     Parameters
     ----------
     active_wires : np.ndarray
-        Array of wires that are not measured
-    params: np.ndarray
-        Array of parameters/rotation for the circuit
-    index: int
-        Index from where to pick the elements from the params array
-
+        Array of the wires to apply the rotations to
+    cgate : Pennylane gate (parametrized or not)
+        Qubit controlled operator to apply
+    params : list
+        List of parameters of the whole circuit
+    index : int
+        Starting index for this block of operators
+    going_down : bool
+        if True -> top - down, if False -> down - top
+    
     Returns
     -------
     int
-        Updated starting index of params array for further rotations
+        Updated index value
     """
-    i = - 1
-    # Apply entanglement to the neighbouring spins
-    for i, (spin, spin_next) in enumerate(zip(active_wires, active_wires[1:])):
-        qml.IsingXX(params[index + i], wires = [int(spin), int(spin_next)])
-        
-    return index + i + 1
+    if len(params) > 0:
+        i = 0
+        for k, spin in enumerate(active_wires):
+            for spin_next in active_wires[k+1:]:
+                if going_down:
+                    cgate(params[index + i], wires=[int(spin), int(spin_next)] )
+                else:
+                    cgate(params[index + i], wires=[int(spin_next), int(spin)] )
+                i += 1
+        return index + i + 1
+    else:
+        for k, spin in enumerate(active_wires):
+            for spin_next in active_wires[k+1:]:
+                if going_down:
+                    cgate(wires=[int(spin), int(spin_next)] )
+                else:
+                    cgate(wires=[int(spin_next), int(spin)] )
+        return index
 
-def entX_nextneighbour(active_wires, params, index = 0):
-    """ 
-    Establish entanglement between qubits using IsingXX gates
+def wall_cgate_nextneighbour(active_wires, cgate, params = [], index = 0, going_down = True):
+    """
+    Apply drop-down controlled rotations establishing next-neighbour entanglement
     
     Parameters
     ----------
     active_wires : np.ndarray
-        Array of wires that are not measured
-    params: np.ndarray
-        Array of parameters/rotation for the circuit
-    index: int
-        Index from where to pick the elements from the params array
-
+        Array of the wires to apply the rotations to
+    cgate : Pennylane gate (parametrized or not)
+        Qubit controlled operator to apply
+    params : list
+        List of parameters of the whole circuit
+    index : int
+        Starting index for this block of operators
+    going_down : bool
+        if True -> top - down, if False -> down - top
+    
     Returns
     -------
     int
-        Updated starting index of params array for further rotations
+        Updated index value
     """
-    # Apply entanglement to the neighbouring spins
-    i = - 1
-    for i, (spin, spin_next) in enumerate(zip(active_wires, active_wires[2:])):
-        qml.IsingXX(params[index + i], wires = [int(spin), int(spin_next)])
-        
-    return index + i + 1
+    if len(params) > 0:
+        for i, (spin, spin_next) in enumerate(zip(active_wires, active_wires[2:])):
+            if going_down:
+                cgate(params[index + i], wires=[int(spin), int(spin_next)] )
+            else:
+                cgate(params[index + i], wires=[int(spin_next), int(spin)] )
+        return index + i + 1
+    else:
+        for spin, spin_next in zip(active_wires, active_wires[2:]):
+            if going_down:
+                cgate(wires=[int(spin), int(spin_next)] )
+            else:
+                cgate(wires=[int(spin_next), int(spin)] )
+        return index
 
-def circuit_ID9(active_wires, params, index = 0, ring = False):
-    wall_Hadamard(active_wires)
-    wall_CNOT_consecutives(active_wires, ring = ring)
+def circuit_ID9(active_wires, params, index = 0):
+    """
+    Basic block for VQE
+    
+    Parameters
+    ----------
+    active_wires : np.ndarray
+        Array of the wires to apply the rotations to
+    params : list
+        List of parameters of the whole circuit
+    index : int
+        Starting index for this block of operators
+        
+    Returns
+    -------
+    int
+        Updated index value
+    """
+    wall_gate(active_wires, qml.Hadamard)
+    wall_cgate_serial(active_wires, qml.CNOT)
     index = wall_gate(active_wires, qml.RY, params, index)
     
     return index
@@ -399,10 +182,10 @@ def pooling(active_wires, qmlrot_func, params, index = 0):
     ----------
     active_wires : np.ndarray
         Array of wires that are not measured during a previous pooling
-    params: np.ndarray
-        Array of parameters/rotation for the circuit
     qmlrot_func : function
         Pennylane Gate function to apply
+    params: np.ndarray
+        Array of parameters/rotation for the circuit
     index: int
         Index from where to pick the elements from the params array
 
@@ -453,8 +236,8 @@ def convolution(active_wires, params, index = 0):
     """
     if len(active_wires) > 1:
         # Convolution:
-        index = wall_RX(active_wires, params, index)
-        index = wall_RY(active_wires, params, index)
+        index = wall_gate(active_wires, qml.RX, params, index)
+        index = wall_gate(active_wires, qml.RY, params, index)
 
         # ---- > Establish entanglement: odd connections
         for wire, wire_next in zip(active_wires[0::2], active_wires[1::2]):
@@ -479,12 +262,12 @@ def encoder_block(wires, wires_trash, shift = 0):
 
     Parameters
     ----------
-    N : int
-        Number of qubits
     wires : np.ndarray
         Array of the indexes of non-trash qubits
     wires_trash : np.ndarray
         Array of the indexes of trash qubits (np.1dsetdiff(np.arange(N),wires))
+    shift : int
+        Shift value for connections between wires and trash wires
     """
     # Connection between trash wires
     trash_uniques = []
@@ -512,27 +295,56 @@ def encoder_block(wires, wires_trash, shift = 0):
         qml.CNOT(wires=[int(wire), int(wires_trash[trash_idx])])
 
 def encoder_circuit(wires, wires_trash, active_wires, params, index = 0):
-    for shift in range(len(wires_trash)):
-        index = wall_RY(active_wires, params, index)
-        encoder_block(wires, wires_trash, shift)
-        qml.Barrier()
-    index = wall_RY(active_wires, params, index)
-
-    return index
-        
-def decoder_block(wires_trash, wires_extra, params, index, shift = 0):
     """
-    Applies CX between a wire and a trash wire for each
-    wire/trashwire
+    Encoder circuit for encoder and autoencoder
 
     Parameters
     ----------
-    N : int
-        Number of qubits
     wires : np.ndarray
         Array of the indexes of non-trash qubits
     wires_trash : np.ndarray
         Array of the indexes of trash qubits (np.1dsetdiff(np.arange(N),wires))
+    active_wires : np.ndarray
+        wires U wires_trash
+    params: np.ndarray
+        Array of parameters/rotation for the circuit
+    index: int
+        Index from where to pick the elements from the params array
+        
+    Returns
+    -------
+    int
+        Updated index value
+    """
+    for shift in range(len(wires_trash)):
+        index = wall_gate(active_wires, qml.RY, params, index = index)
+        encoder_block(wires, wires_trash, shift)
+        qml.Barrier()
+    index = wall_gate(active_wires, qml.RY, params, index = index)
+
+    return index
+
+def decoder_block(wires_trash, wires_extra, params, index, shift = 0):
+    """
+    (Almost) specular encoder block
+
+    Parameters
+    ----------
+    wires_trash : np.ndarray
+        Array of the indexes of trash qubits (np.1dsetdiff(np.arange(N),wires))
+    wires_extra : np.ndarray
+        New wires for decoding
+    params: np.ndarray
+        Array of parameters/rotation for the circuit
+    index: int
+        Index from where to pick the elements from the params array
+    shift : int
+        Shift value for connections between wires and trash wires
+        
+    Returns
+    -------
+    int
+        Updated index value
     """
     shift = shift % 2
     
@@ -549,17 +361,37 @@ def decoder_block(wires_trash, wires_extra, params, index, shift = 0):
     
     return index + k + 1
 
-def decoder_circuit(wires, wires_trash, wires_extra, params, index = 0):
-    index = wall_RY(wires_extra, params, index)
-    index = wall_RX(wires_extra, params, index)
-    index = wall_RY(wires_extra, params, index)
+def decoder_circuit(wires_trash, wires_extra, params, index = 0):
+    """
+    (Almost) specular encoder circuit for autoencoder
+
+    Parameters
+    ----------
+    wires_trash : np.ndarray
+        Array of the indexes of trash qubits (np.1dsetdiff(np.arange(N),wires))
+    wires_extra : np.ndarray
+        New wires for decoding
+    params: np.ndarray
+        Array of parameters/rotation for the circuit
+    index: int
+        Index from where to pick the elements from the params array
+        
+    Returns
+    -------
+    int
+        Updated index value
+    """
+    
+    index = wall_gate(wires_extra, qml.RY, params, index = index)
+    index = wall_gate(wires_extra, qml.RX, params, index = index)
+    index = wall_gate(wires_extra, qml.RY, params, index = index)
         
     for shift in range(8):
         index = decoder_block(wires_trash, wires_extra, params, index, shift)
         qml.Barrier()
         
-        index = wall_RX(wires_trash, params, index)
-        index = wall_RX(wires_extra, params, index)
+        index = wall_gate(wires_trash, qml.RX, params, index = index)
+        index = wall_gate(wires_extra, qml.RX, params, index = index)
         
         qml.Barrier()
 
@@ -567,4 +399,4 @@ def decoder_circuit(wires, wires_trash, wires_extra, params, index = 0):
         qml.SWAP(wires = [int(n),int(m)])
     
     return index
-
+    
