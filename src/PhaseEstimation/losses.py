@@ -4,7 +4,7 @@ import jax.numpy as jnp
 from jax import jit
 
 # VQE LOSSES
-def vqe_fidelties(Y, params, q_circuit):
+def vqe_fidelities(Y, params, q_circuit):
     """
     LOSS: Compute Fidelity between VQE PSI (output of q_circuit(params)) and TRUE PSI computed by diagonalizing the Hamiltonian
     
@@ -24,13 +24,13 @@ def vqe_fidelties(Y, params, q_circuit):
     """
     
     # Core function, not vectorized
-    def vqe_fidelty(y, p, q_circuit):
+    def vqe_fidelity(y, p, q_circuit):
         psi_out = q_circuit(p)
         
         return jnp.square(jnp.abs(jnp.conj(psi_out) @  y))
     
     # Vectorize the fidelity function
-    v_fidelty = jax.vmap(lambda y, p: vqe_fidelty(y,p,q_circuit), in_axes = (0, 0) )
+    v_fidelty = jax.vmap(lambda y, p: vqe_fidelity(y,p,q_circuit), in_axes = (0, 0) )
 
     return jnp.mean(v_fidelty(Y, params))
 

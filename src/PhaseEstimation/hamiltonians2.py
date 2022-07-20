@@ -6,7 +6,7 @@ import jax.numpy as jnp
 ##############
 
 class hamiltonian:
-    def __init__(self, building_func, light = False, **kwargs):
+    def __init__(self, building_func, **kwargs):
         """
         Hamiltonian class
 
@@ -27,17 +27,16 @@ class hamiltonian:
         self.qml_Hs, self.labels, self.recycle_rule, self.model_params = self.func(**kwargs)
         
         # Get the groundstate-energy and the matrix hamiltonian
-        mat_Hs = []
-        true_e = []
+        true_gs_en = []
+        true_ex_en = []
+        
         for qml_H in self.qml_Hs:
             # True groundstate energies
-            true_e.append(np.min(qml.eigvals(qml_H)))
-            # Standard matrix for of the hamiltonians
-            if not light:
-                mat_Hs.append(qml.matrix(qml_H))
-        
-        if not light:
-            self.mat_Hs = jnp.array(mat_Hs)
-        self.true_e = jnp.array(true_e)
+            eigs = np.sort(qml.eigvals(qml_H))
+            true_gs_en.append(eigs[0])
+            true_ex_en.append(eigs[1])
+            
+        self.true_e0 = jnp.array(true_gs_en)
+        self.true_e1 = jnp.array(true_ex_en)
         self.n_states = len(self.qml_Hs)
             
