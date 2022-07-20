@@ -13,7 +13,7 @@ from orqviz.scans import perform_2D_scan, plot_2D_scan_result
 from orqviz.pca import (get_pca, perform_2D_pca_scan, plot_pca_landscape, 
                         plot_optimization_trajectory_on_pca)
 
-def show_VQE_isingchain(vqeclass):
+def show_VQE_isingchain(vqeclass, excited = False):
     """
     Shows results of a trained VQE run:
     > VQE enegies plot
@@ -21,8 +21,29 @@ def show_VQE_isingchain(vqeclass):
     > Final relative errors
     > Mean Squared difference between final subsequent states
     """
-    vqeclass.states_dist = [
-        np.mean(np.square(np.real(vqeclass.states[k + 1] - vqeclass.states[k])))
+    # Exit if the VQE was not trained for excited states
+    if excited:
+        try:
+            vqeclass.vqe_params1
+        except:
+            return
+    
+    if not excited:
+        states = vqeclass.states
+        true_e = vqeclass.Hs.true_e
+        vqe_e  = vqeclass.vqe_e
+        MSE = vqeclass.MSE
+        title = "Ground States of Ising Hamiltonian ({0}-spins), J = {1}"
+    else:
+        states = vqeclass.states1
+        true_e = vqeclass.Hs.true_e1
+        true_gs_e = vqeclass.Hs.true_e
+        vqe_e  = vqeclass.vqe_e1 
+        MSE = vqeclass.MSE1
+        title = "Excited States of Ising Hamiltonian ({0}-spins), J = {1}"
+        
+    states_dist = [
+        np.mean(np.square(np.real(states[k + 1] - states[k])))
         for k in range(vqeclass.n_states - 1)
     ]
 
@@ -31,15 +52,16 @@ def show_VQE_isingchain(vqeclass):
     tot_plots = 3 if vqeclass.recycle else 4
     fig, ax = plt.subplots(tot_plots, 1, figsize=(12, 18.6))
 
-    ax[0].plot(lams, vqeclass.Hs.true_e, "--", label="True", color="red", lw=2)
-    ax[0].plot(lams, vqeclass.vqe_e, ".", label="VQE", color="green", lw=2)
-    ax[0].plot(lams, vqeclass.vqe_e, color="green", lw=2, alpha=0.6)
+    ax[0].plot(lams, true_e, "--", label="True", color="red", lw=3)
+    if excited:
+        ax[0].plot(lams, vqe_e, ".", label="VQE", color="dodgerblue", lw=2)
+        ax[0].plot(lams, vqe_e, color="dodgerblue", lw=2, alpha=0.6)
+        ax[0].plot(lams, true_gs_e, "--", label="Ground State", color="black", lw=2, alpha = 0.6)
+    else:
+        ax[0].plot(lams, vqe_e, ".", label="VQE", color="green", lw=2)
+        ax[0].plot(lams, vqe_e, color="green", lw=2, alpha=0.6)
     ax[0].grid(True)
-    ax[0].set_title(
-        "Ground States of Ising Hamiltonian ({0}-spins), J = {1}".format(
-            vqeclass.N, vqeclass.Hs.J
-        )
-    )
+    ax[0].set_title(title.format(vqeclass.N, vqeclass.Hs.J))
     ax[0].set_xlabel(r"$\lambda$")
     ax[0].set_ylabel(r"$E(\lambda)$")
     ax[0].legend()
@@ -60,7 +82,7 @@ def show_VQE_isingchain(vqeclass):
 
         k = 2
 
-    accuracy = np.abs((vqeclass.Hs.true_e - vqeclass.vqe_e) / vqeclass.Hs.true_e)
+    accuracy = np.abs((true_e - vqe_e) / true_e)
     ax[k].fill_between(
         lams, 0.01, max(np.max(accuracy), 0.01), color="r", alpha=0.3
     )
@@ -75,11 +97,11 @@ def show_VQE_isingchain(vqeclass):
     ax[k].set_ylabel(r"$|(E_{vqe} - E_{true})/E_{true}|$")
 
     ax[k + 1].set_title(
-        "Mean square distance between consecutives density matrices"
+        r"MSE($|\psi_k>, |\psi_{k-1}>$)"
     )
     ax[k + 1].plot(
         np.linspace(0, 2 * vqeclass.Hs.J, num=vqeclass.n_states - 1),
-        vqeclass.states_dist,
+        states_dist,
         "-o",
     )
     ax[k + 1].grid(True)
@@ -163,7 +185,7 @@ def show_VQE_nnisingchain(vqeclass):
 
     plt.tight_layout()
 
-def show_VQE_annni(vqeclass, log_heatmap = False):
+def show_VQE_annni(vqeclass, log_heatmap = False, excited = False):
     """
     Shows results of a trained VQE run:
     > VQE enegies plot
@@ -173,23 +195,44 @@ def show_VQE_annni(vqeclass, log_heatmap = False):
     """
     states_dist = []
     side = int(np.sqrt(vqeclass.n_states))
-
-    trues = np.reshape(vqeclass.Hs.true_e,(side, side) )
-    preds = np.reshape(vqeclass.vqe_e,(side, side) )
+    
+    # Exit if the VQE was not trained for excited states
+    try:
+        vqeclass.vqe_params1
+    except:
+        return
+    
+    if not excited:
+        states = vqeclass.states
+        trues = np.reshape(vqeclass.Hs.true_e,(side, side) )
+        preds = np.reshape(vqeclass.vqe_e,(side, side) )
+        MSE = vqeclass.MSE
+        title = "Ground States of Ising Hamiltonian ({0}-spins), J = {1}"
+    else:
+        states = vqeclass.states1
+        trues = np.reshape(vqeclass.Hs.true_e1,(side, side) )
+        preds = np.reshape(vqeclass.vqe_e1,(side, side) )
+        trues_gs = np.reshape(vqeclass.Hs.true_e,(side, side) )
+        MSE = vqeclass.MSE1
+        title = "Excited States of Ising Hamiltonian ({0}-spins), J = {1}"
 
     x = np.linspace(1, 0, side)
     y = np.linspace(0, 2, side)
 
-    fig = go.Figure(data=[go.Surface(opacity=.2, colorscale='Reds', z=trues, x=x, y=y),
+    if excited:
+        fig = go.Figure(data=[go.Surface(opacity=.2, colorscale='Reds', z=trues, x=x, y=y),
+                  go.Surface(opacity=1, colorscale='Blues',z=preds, x=x, y=y), go.Surface(opacity=.6, colorscale='plasma',z=trues_gs, x=x, y=y)])
+    else:
+        fig = go.Figure(data=[go.Surface(opacity=.2, colorscale='Reds', z=trues, x=x, y=y),
                   go.Surface(opacity=1, colorscale='Blues',z=preds, x=x, y=y)])
-
+        
     fig.update_layout(height=500)
     fig.show()
 
     if not vqeclass.recycle:
         plt.figure(figsize=(15,3))
         plt.title('Loss of training set')
-        plt.plot(np.arange(len(vqeclass.MSE)+1)[1:]*100, vqeclass.MSE)
+        plt.plot(np.arange(len(MSE)+1)[1:]*100, MSE)
         plt.show()
 
     accuracy = np.rot90( np.abs(preds-trues)/np.abs(trues) )
@@ -228,7 +271,7 @@ def show_VQE_annni(vqeclass, log_heatmap = False):
         if (idx    ) % side == 0 and idx != 0:
             neighbours = np.delete(neighbours, 1)
 
-        states_dist.append(np.mean(np.square([np.real(vqeclass.states[n] - state) for n in neighbours]) ) )
+        states_dist.append(np.mean(np.square([np.real(states[n] - state) for n in neighbours]) ) )
 
     ax[1].set_title('Mean square difference between neighbouring states')
     diff = ax[1].imshow(np.rot90(np.reshape(states_dist, (side,side)) ) )
