@@ -328,9 +328,9 @@ def load(filename_vqe, filename_enc):
 def enc_classification_ANNNI(vqeclass, lr, epochs, inject = False):
     """
     Train 3 encoder on the corners: 
-       > K = 0, L = 2 (Paramagnetic)
-       > K = 0, L = 0 (Ferromagnetic)
-       > K = 1, L = 0 (Antiphase)
+    > K = 0, L = 2 (Paramagnetic)
+    > K = 0, L = 0 (Ferromagnetic)
+    > K = 1, L = 0 (Antiphase)
     The other states will be classified taking the lowest error in each encoder
     
     Parameters

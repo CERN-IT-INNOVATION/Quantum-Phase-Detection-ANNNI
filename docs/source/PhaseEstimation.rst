@@ -12,10 +12,26 @@ PhaseEstimation.annni\_model module
    :undoc-members:
    :show-inheritance:
 
-PhaseEstimation.anomaly module
+PhaseEstimation.autoencoder module
+----------------------------------
+
+.. automodule:: PhaseEstimation.autoencoder
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+PhaseEstimation.circuits module
+-------------------------------
+
+.. automodule:: PhaseEstimation.circuits
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+PhaseEstimation.encoder module
 ------------------------------
 
-.. automodule:: PhaseEstimation.anomaly
+.. automodule:: PhaseEstimation.encoder
    :members:
    :undoc-members:
    :show-inheritance:
@@ -36,10 +52,34 @@ PhaseEstimation.ising\_chain module
    :undoc-members:
    :show-inheritance:
 
+PhaseEstimation.losses module
+-----------------------------
+
+.. automodule:: PhaseEstimation.losses
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+PhaseEstimation.nnising\_chain module
+-------------------------------------
+
+.. automodule:: PhaseEstimation.nnising_chain
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 PhaseEstimation.qcnn module
 ---------------------------
 
 .. automodule:: PhaseEstimation.qcnn
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+PhaseEstimation.visualization module
+------------------------------------
+
+.. automodule:: PhaseEstimation.visualization
    :members:
    :undoc-members:
    :show-inheritance:

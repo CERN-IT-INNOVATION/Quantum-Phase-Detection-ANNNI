@@ -123,7 +123,7 @@ def hinge(X, Y, params, q_circuit):
     """
     LOSS: (Experimental) Compute Hinge loss for a binary classification task
     N.B: MAX is not applied because output is a probabiliti [0,1] that will be mapped
-         to [-1,1], hence the 1 - Prediction(X)*Y can be at minimum 0
+    to [-1,1], hence the 1 - Prediction(X)*Y can be at minimum 0
          
     Parameters
     ----------

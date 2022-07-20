@@ -7,7 +7,7 @@ from pennylane import numpy as np
 def get_H(N, j2, J1 = 1, ring = False):
     """
     Set up Hamiltonian:
-            H = -J1 (*Σsigma_x^i*sigma_x^{i+1] + (J2/J1)*Σsigma^i_x*sigma_x^{i+2})
+    .. math:: H = -J1 (*\\Sigma \\sigma_x^i*\\sigma_x^{i+1}] + (J2/J1)*\\Sigma \\sigma^i_x*\\sigma_x^{i+2})
 
     Parameters
     ----------
