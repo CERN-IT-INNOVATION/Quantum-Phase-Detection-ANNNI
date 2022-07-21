@@ -92,6 +92,7 @@ class qcnn:
         self.device = vqe.device
 
         self.vqe_params = np.array(vqe.vqe_params)
+        
         self.labels = np.array(vqe.Hs.labels)
         self.train_index = []
         self.loss_train = []
