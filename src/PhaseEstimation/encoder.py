@@ -369,7 +369,7 @@ def enc_classification_ANNNI(vqeclass, lr, epochs, inject = False):
             qcnnclass.psi
         except:
             psi = []
-            for h in encclass.vqe.Hs.mat_Hs:
+            for qml_h in encclass.vqe.Hs.qml_H:
                 # Compute eigenvalues and eigenvectors
                 eigval, eigvec = jnp.linalg.eigh(h)
                 # Get the eigenstate to the lowest eigenvalue

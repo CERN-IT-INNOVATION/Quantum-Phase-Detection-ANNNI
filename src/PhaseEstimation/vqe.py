@@ -7,7 +7,7 @@ from jax import jit
 from jax.example_libraries import optimizers
 
 import copy
-import tqdm  # Pretty progress bars
+from tqdm.auto import tqdm
 import joblib, pickle  # Writing and loading
 
 import warnings
@@ -87,7 +87,7 @@ class vqe:
 
         self.drawer = qml.draw(vqe_state)(self)
 
-    def train(self, lr, n_epochs, reg=0, circuit=False, recycle=True, save_trajectories = False, epochs_batch_size = 500, excited = False, beta = 0):
+    def train(self, lr, n_epochs, reg=0, circuit=False, recycle=True, epochs_batch_size = 500, batch_size = 100, excited = False, beta = 0):
         """
         Training function for the VQE.
 
@@ -102,10 +102,8 @@ class vqe:
             too much different
         circuit : bool
             if True -> Prints the circuit
-            if False -> It does not display the circuit
         plots : bool
             if True -> Display plots
-            if False -> It does not display plots
         recycle : bool
             if True -> Each state (depending on the intensity of the magnetic field) is computed independently and in parallel.
             if False -> Each state is trained after the previous one, in which the initial parameters are the final learnt parameters of the previous state
@@ -120,161 +118,149 @@ class vqe:
             # Display the circuit
             print("+--- CIRCUIT ---+")
             print(self.drawer)
-
-        ### JAX FUNCTIONS ###
-        # Circuit that returns the state |psi>
+        
+        ### STATES FUNCTIONS ###
+        # Quantum Circuit to output states
         @qml.qnode(self.device, interface="jax")
-        def vqe_state(vqe_params):
+        def q_vqe_state(vqe_params):
             self.circuit(vqe_params)
 
             return qml.state()
         
+        v_q_vqe_state = jax.vmap(lambda v: q_vqe_state(v), in_axes=(0))  # vmap of the state circuit
+        jv_q_vqe_state = jax.jit(v_q_vqe_state)                          # jitted vmap of the state circuit
+        j_q_vqe_state = jax.jit(lambda p: q_vqe_state(p))                # jitted state circuit
+        
         def compute_true_state(H):
-            # Compute eigenvalues and eigenvectors
-            eigval, eigvec = jnp.linalg.eigh(H)
-            # Get the eigenstate to the lowest eigenvalue
-            gstate = eigvec[:,jnp.argmin(eigval)]
-
+            eigval, eigvec = jnp.linalg.eigh(H)   # Get eigenvalues/-vectors of H
+            gstate = eigvec[:,jnp.argmin(eigval)] # Pick the eigenvector with the lowest eigenvalue
             return gstate
+        
         jv_compute_true_state = jax.jit(jax.vmap(compute_true_state))
+        
+        #########################
+        
+        ### ENERGY FUNCTIONS ###
+        # computes <psi|H|psi>
+        def compute_vqe_E(state, Hmat):
+            return jnp.real(jnp.conj(state) @ Hmat @ state)
+
+        j_compute_vqe_E = jax.jit(compute_vqe_E)
+        v_compute_vqe_E = jax.vmap(compute_vqe_E, in_axes=(0, 0))
+        jv_compute_vqe_E = jax.jit(v_compute_vqe_E)
+        
+        ########################
         
         if excited:
             def psi_outer(psi):
                 return jnp.outer(jnp.conj(psi), psi)
-
-            outers = jax.vmap(psi_outer)(self.states)
+            j_psi_outer = jax.jit(psi_outer)
+            jv_psi_outer = jax.jit(jax.vmap(psi_outer))
+            
+            # Try to load already trained parameters for
+            # the excited states, if not, generate random ones
             try:
                 params = copy.copy(self.vqe_params1)
             except:
-                params = jnp.array( np.random.uniform(-np.pi, np.pi, size=(self.n_states,self.n_params)) ) 
-            operators = self.Hs.mat_Hs + beta * outers
-            
-            true_e = []
-            for h in self.Hs.mat_Hs:
-                eigvals, eigvecs = jnp.linalg.eigh(h)
-                true_e.append(np.sort(eigvals)[1])
-            true_e = jnp.array(true_e)  
-            self.Hs.true_e1 = true_e
+                params = jnp.array( np.random.uniform(-np.pi, np.pi, size=(self.n_states,self.n_params)) )
+            true_e = self.Hs.true_e1
                 
         else:
-            self.true_states = jv_compute_true_state(self.Hs.mat_Hs)
             params = copy.copy(self.vqe_params)
-            operators = self.Hs.mat_Hs
-            true_e = self.Hs.true_e
-        
-
-        # vmap of the circuit
-        v_vqe_state = jax.vmap(lambda v: vqe_state(v), in_axes=(0))
-
-        # jitted vmap of the circuit
-        jv_vqe_state = jax.jit(v_vqe_state)
-
-        # jitted circuit
-        j_vqe_state = jax.jit(lambda p: vqe_state(p))
-
-        # computes <psi|H|psi>
-        def compute_E(state, Hmat):
-            return jnp.conj(state) @ Hmat @ state
-
-        # vmapped function for <psi|H|psi>
-        v_compute_E = jax.vmap(compute_E, in_axes=(0, 0))
-        # jitted function for <psi|H|psi>
-        j_compute_E = jax.jit(compute_E)
-
-        # Same function as above but returns the energies not MSE
-        def compute_vqe_E(param, Hmat):
-            pred_states = j_vqe_state(param)
-            vqe_e = j_compute_E(pred_states, Hmat)
-
-            return jnp.real(vqe_e)
-
-        j_compute_vqe_E = jax.jit(compute_vqe_E)
-        v_compute_vqe_E = jax.vmap(compute_vqe_E, in_axes=(0, 0))
-
-        # Same function as above but returns the energies not MSE
-        def v_compute_vqe_E(params):
-            pred_states = v_vqe_state(params)
-            vqe_e = v_compute_E(pred_states, operators)
-
-            return jnp.real(vqe_e)
-            
-        j_v_compute_vqe_E = jax.jit(v_compute_vqe_E)
+            true_e = self.Hs.true_e0
 
         if not recycle:
             self.recycle = False
-            oom = False
-            jv_fidelties = jax.jit(lambda true, pars: losses.vqe_fidelties(true, pars, vqe_state) )
+            # For updating progress bar on fidelity between true states and vqe states
+            jv_fidelties = jax.jit(lambda true, pars: losses.vqe_fidelities(true, pars, q_vqe_state) )
             
-            def compute_diff_states(states):
-                return jnp.mean(jnp.square(jnp.diff(jnp.real(states), axis=1)))
-            
-            def loss(params):
-                pred_states = v_vqe_state(params)
-                vqe_e = v_compute_E(pred_states, operators)
-
-                if reg != 0:
-                    return jnp.mean(jnp.real(vqe_e)) + reg * compute_diff_states(pred_states)
-                else:
-                    return jnp.mean(jnp.real(vqe_e))
-
-            # Grad function of the MSE, used in updating the parameters
-            jd_loss = jax.jit(jax.grad(loss))
-            
-            def update(params, opt_state):
-                grads = jd_loss(params)
-                opt_state = opt_update(0, grads, opt_state)
-                
-                return get_params(opt_state), opt_state 
-
-            progress = tqdm.tqdm(range(n_epochs), position=0, leave=True)
-
             MSE = []
-            self.trajectory = []
+            vqe_E = np.array([0.0]*self.n_states)
+            batches = []
+            k = 0
+            while k < self.n_states:
+                batches.append(self.Hs.recycle_rule[k:k+batch_size])
+                k = k + batch_size
+            n_batches = len(batches)
             
-            # Defining an optimizer in Jax
-            opt_init, opt_update, get_params = optimizers.adam(lr)
-            opt_state = opt_init(params)
-            
-            for it in progress:
-                params, opt_state = update(params, opt_state)
+            progress = tqdm(range(n_batches), position=0, leave=True)
+            for batch in batches:
+                params_batch = params[batch]
+                Hs_batch     = []
+                psi_batch    = []
+                en_lvl = 0 if not excited else 1
                 
-                # I want to skip when it == 0
-                if (it + 1) % epochs_batch_size == 0:
-                    if not oom:
-                        try:
-                            MSE.append(
-                                jnp.mean(jnp.square(j_v_compute_vqe_E(params) - true_e))
-                            )
-                        except RuntimeError:
-                            oom = True
-                            MSE.append(
-                                jnp.mean(jnp.square(v_compute_vqe_E(params) - true_e))
-                            )
-                    else:
-                        MSE.append(
-                                jnp.mean(jnp.square(v_compute_vqe_E(params) - true_e))
-                            )
+                for idx in batch:
+                    H = qml.matrix(self.Hs.qml_Hs[idx])
+                    Hs_batch.append(H)
+                    eigval, eigvec = jnp.linalg.eigh(H)
+                    psi_batch.append(eigvec[:,jnp.argsort(eigval)[en_lvl]])
+                psi_batch = jnp.array(psi_batch)
+                Hs_batch = jnp.array(Hs_batch)
+                
+                # Defining an optimizer in Jax
+                opt_init, opt_update, get_params = optimizers.adam(lr)
+                opt_state = opt_init(params_batch)
 
-                    # Update progress bar
-                    progress.set_description("Cost: {0:.4f} | Mean F.: {1:.4f}".format(MSE[-1], jv_fidelties(self.true_states, jnp.array(params)) ) )
+                MSE_batch = []
                 
-                if it % 10 == 0:
-                    if save_trajectories:
-                        self.trajectory.append(params)
+                if excited:
+                    outers = jv_psi_outer(psi_batch)
+                    operators = Hs_batch + beta * outers
+                else:
+                    operators = Hs_batch 
+                    
+                def loss(params):
+                    pred_states = v_q_vqe_state(params)
+                    vqe_e = v_compute_vqe_E(pred_states, operators)
+
+                    if reg != 0:
+                        return jnp.mean(jnp.real(vqe_e)) + reg * losses.compute_diff_states(pred_states)
+                    else:
+                        return jnp.mean(jnp.real(vqe_e))
+
+                # Grad function, used in updating the parameters
+                jd_loss = jax.jit(jax.grad(loss))
+
+                def update(params, opt_state):
+                    grads = jd_loss(params)
+                    opt_state = opt_update(0, grads, opt_state)
+
+                    return get_params(opt_state), opt_state 
+            
+                progress_batch = tqdm(range(n_epochs), position=1, leave=True)
+                for it in progress_batch:
+                    params_batch, opt_state = update(params_batch, opt_state)
+
+                    # skip when it == 0
+                    if (it + 1) % epochs_batch_size == 0:
+                        pred_states = jv_q_vqe_state(params_batch)
+                        MSE_batch.append(
+                            jnp.mean(jnp.square(jv_compute_vqe_E(pred_states, Hs_batch) - true_e[batch]))
+                        )
+
+                        # Update progress bar
+                        progress_batch.set_description("Cost: {0:.4f} | Mean F.: {1:.4f}".format(MSE_batch[-1], jv_fidelties(psi_batch, jnp.array(params_batch)) ) )
+                        
+                params[batch] = params_batch
+                vqe_E[batch] = jv_compute_vqe_E(jv_q_vqe_state(params_batch), Hs_batch)
+                
+                MSE.append(MSE_batch)
+                progress.update(1)
+            MSE = np.mean(MSE, axis = 0)
+
         else:
             self.recycle = True
-            oom = False
             
-            # Computes MSE of the true energies - vqe energies: function to minimize
             def loss_reg(param, Hmat, reg, previous_state):
-                pred_state = j_vqe_state(param)
-                vqe_e = j_compute_E(pred_state, Hmat)
+                pred_state = j_q_vqe_state(param)
+                vqe_e = j_compute_vqe_E(pred_state, Hmat)
                 
                 return jnp.real(vqe_e) + reg * jnp.square(jnp.abs(jnp.conj(pred_state) @  previous_state))
             
             def loss(param, Hmat):
-                pred_state = j_vqe_state(param)
-                vqe_e = j_compute_E(pred_state, Hmat)
+                pred_state = j_q_vqe_state(param)
+                vqe_e = j_compute_vqe_E(pred_state, Hmat)
                 
                 return jnp.real(vqe_e)
     
@@ -294,11 +280,12 @@ class vqe:
                 
                 return get_params(opt_state), opt_state 
 
-            progress = tqdm.tqdm(self.Hs.recycle_rule[1:], position=0, leave=True)
+            progress = tqdm(self.Hs.recycle_rule[1:], position=0, leave=True)
             params = [[0]*self.n_params]*self.n_states
             param = jnp.array(np.random.rand(self.n_params))
             
             MSE = []
+            vqe_E = []
             previous_pred_states = []
             
             idx = 0
@@ -307,12 +294,16 @@ class vqe:
             opt_init, opt_update, get_params = optimizers.adam(lr)
             opt_state = opt_init(param)
             
+            H_effective = qml.matrix(self.Hs.qml_Hs[idx])
+            H = copy.copy(H_effective)
             if excited:
-                operators = self.Hs.mat_Hs + outers
+                gs_psi = j_q_vqe_state(self.vqe_params[idx])
+                H_effective += j_psi_outer(gs_psi)
             for it in range(10*n_epochs):
-                param, opt_state = update(param, opt_state, self.Hs.mat_Hs[idx])
+                param, opt_state = update(param, opt_state, H_effective)
                 
-            previous_state = j_vqe_state(param)
+            previous_state = j_q_vqe_state(param)
+            vqe_E.append( j_compute_vqe_E(previous_state, H) )
             params[idx] = copy.copy(param)
             progress.set_description("{0}/{1}".format(idx + 1, self.n_states))
             
@@ -320,32 +311,28 @@ class vqe:
                 opt_init, opt_update, get_params = optimizers.adam(lr)
                 opt_state = opt_init(param)
                 
+                H_effective = qml.matrix(self.Hs.qml_Hs[idx])
+                H = copy.copy(H_effective)
+                if excited:
+                    gs_psi = j_q_vqe_state(self.vqe_params[idx])
+                    H_effective += j_psi_outer(gs_psi)
                 for it in range(n_epochs):
-                    param, opt_state = update_reg(param, opt_state, operators[idx], reg, previous_state)
+                    param, opt_state = update_reg(param, opt_state, H_effective, reg, previous_state)
                         
                 params[idx] = copy.copy(param)
                 progress.set_description("{0}/{1}".format(idx + 1, self.n_states))
-                previous_state = j_vqe_state(param)
+                previous_state = j_q_vqe_state(param)
+                vqe_E.append( j_compute_vqe_E(previous_state, H) )
             params = jnp.array(params)
         
         if not excited: 
             self.MSE = MSE
             self.vqe_params = params
-            if not oom:
-                self.vqe_e = j_v_compute_vqe_E(params)
-                self.states = jv_vqe_state(params)
-            else:
-                self.vqe_e = v_compute_vqe_E(params)
-                self.states = v_vqe_state(params)
+            self.vqe_e = np.array(vqe_E)
         else:
             self.MSE1 = MSE
             self.vqe_params1 = params
-            if not oom:
-                self.vqe_e1 = j_v_compute_vqe_E(params)
-                self.states1 = jv_vqe_state(params)
-            else:
-                self.vqe_e1 = v_compute_vqe_E(params)
-                self.states1 = v_vqe_state(params)        
+            self.vqe_e1 = np.array(vqe_E)
 
     def save(self, filename):
         """

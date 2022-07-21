@@ -56,6 +56,9 @@ def vqe_fidelties_neighbouring(states):
     
     return jnp.mean(v_fidelty(states[:-1], states[1:]))
 
+def compute_diff_states(states):
+    return jnp.mean(jnp.square(jnp.diff(jnp.real(states), axis=1)))
+
 # QCNN LOSSES
 def cross_entropy(X, Y, params, q_circuit):
     """

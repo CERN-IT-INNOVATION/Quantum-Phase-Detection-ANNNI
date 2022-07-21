@@ -29,26 +29,36 @@ def show_VQE_isingchain(vqeclass, excited = False):
             return
     
     if not excited:
-        states = vqeclass.states
-        true_e = vqeclass.Hs.true_e
+        true_e = vqeclass.Hs.true_e0
         vqe_e  = vqeclass.vqe_e
         MSE = vqeclass.MSE
+        vqe_params = vqeclass.vqe_params
         title = "Ground States of Ising Hamiltonian ({0}-spins), J = {1}"
     else:
-        states = vqeclass.states1
         true_e = vqeclass.Hs.true_e1
-        true_gs_e = vqeclass.Hs.true_e
+        true_gs_e = vqeclass.Hs.true_e0
         vqe_e  = vqeclass.vqe_e1 
         MSE = vqeclass.MSE1
+        vqe_params = vqeclass.vqe_params1
         title = "Excited States of Ising Hamiltonian ({0}-spins), J = {1}"
         
-    states_dist = [
-        np.mean(np.square(np.real(states[k + 1] - states[k])))
-        for k in range(vqeclass.n_states - 1)
-    ]
+    @qml.qnode(vqeclass.device, interface="jax")
+    def q_vqe_state(vqe_params):
+        vqeclass.circuit(vqe_params)
 
+        return qml.state()
+    j_q_vqe_state = jax.jit(q_vqe_state)
+    
+    state_pred = j_q_vqe_state(vqe_params[0])
+    state_curr = j_q_vqe_state(vqe_params[1])
+    states_dist = [np.mean(np.square(np.real(state_curr - state_pred)))]
+    state_pred = state_curr
+    for i in range(2,vqeclass.n_states):
+        state_curr = j_q_vqe_state(vqe_params[i])
+        states_dist.append(float(np.mean(np.square(np.real(state_curr - state_pred)))) )
+        state_pred = state_curr
+    
     lams = np.linspace(0, 2*vqeclass.Hs.J, vqeclass.n_states)
-
     tot_plots = 3 if vqeclass.recycle else 4
     fig, ax = plt.subplots(tot_plots, 1, figsize=(12, 18.6))
 
@@ -100,7 +110,7 @@ def show_VQE_isingchain(vqeclass, excited = False):
         r"MSE($|\psi_k>, |\psi_{k-1}>$)"
     )
     ax[k + 1].plot(
-        np.linspace(0, 2 * vqeclass.Hs.J, num=vqeclass.n_states - 1),
+        lams[1:],
         states_dist,
         "-o",
     )
@@ -197,19 +207,20 @@ def show_VQE_annni(vqeclass, log_heatmap = False, excited = False):
     side = int(np.sqrt(vqeclass.n_states))
     
     # Exit if the VQE was not trained for excited states
-    try:
-        vqeclass.vqe_params1
-    except:
-        return
+    if excited:
+        try:
+            vqeclass.vqe_params1
+        except:
+            return
     
     if not excited:
-        states = vqeclass.states
-        trues = np.reshape(vqeclass.Hs.true_e,(side, side) )
+        #states = vqeclass.states
+        trues = np.reshape(vqeclass.Hs.true_e0,(side, side) )
         preds = np.reshape(vqeclass.vqe_e,(side, side) )
         MSE = vqeclass.MSE
         title = "Ground States of Ising Hamiltonian ({0}-spins), J = {1}"
     else:
-        states = vqeclass.states1
+        #states = vqeclass.states1
         trues = np.reshape(vqeclass.Hs.true_e1,(side, side) )
         preds = np.reshape(vqeclass.vqe_e1,(side, side) )
         trues_gs = np.reshape(vqeclass.Hs.true_e,(side, side) )
@@ -237,50 +248,28 @@ def show_VQE_annni(vqeclass, log_heatmap = False, excited = False):
 
     accuracy = np.rot90( np.abs(preds-trues)/np.abs(trues) )
 
-    fig2, ax = plt.subplots(1, 2, figsize=(10, 40))
-
     if not log_heatmap:
         colors_good = np.squeeze( np.dstack((np.dstack((np.linspace(.3,0,25), np.linspace(.8,1,25))), np.linspace(1,0,25) )) )
         colors_bad  = np.squeeze( np.dstack((np.dstack((np.linspace(1,0,100), [0]*100)), [0]*100 )) )
         colors = np.vstack((colors_good, colors_bad))
         cmap_acc = LinearSegmentedColormap.from_list('accuracies', colors)
 
-        acc = ax[0].imshow(accuracy, cmap = cmap_acc)
-        acc.set_clim(0,0.05)
-        plt.colorbar(acc, ax=ax[0], fraction=0.04)
+        plt.imshow(accuracy, cmap = cmap_acc)
+        plt.clim(0,0.05)
+        plt.colorbar(fraction=0.04)
     else:
         colors = np.squeeze( np.dstack((np.dstack((np.linspace(0,1,75), np.linspace(1,0,75))), np.linspace(0,0,75) )) )
         cmap_acc = LinearSegmentedColormap.from_list('accuracies', colors)
-        acc = ax[0].imshow(accuracy, cmap = cmap_acc, norm=LogNorm())
-        plt.colorbar(acc, ax=ax[0], fraction=0.04)
+        plt.imshow(accuracy, cmap = cmap_acc, norm=LogNorm())
+        plt.colorbar(fraction=0.04)
 
-    ax[0].set_xlabel('L')
-    ax[0].set_ylabel('K')
-    ax[0].set_title('Relative errors')
+    plt.xlabel('L')
+    plt.ylabel('K')
+    plt.title('Relative errors')
 
-    ax[0].set_xticks(ticks=np.linspace(0,side-1,4).astype(int), labels= np.round(x[np.linspace(side-1,0,4).astype(int)],2))
-    ax[0].set_yticks(ticks=np.linspace(0,side-1,4).astype(int), labels= np.round(y[np.linspace(side-1,0,4).astype(int)],2))
-
-    for idx, state in enumerate(vqeclass.states):
-        neighbours = np.array([idx + 1, idx - 1, idx + side, idx - side])
-        neighbours = np.delete(neighbours, np.logical_not(np.isin(neighbours, vqeclass.Hs.recycle_rule)) )
-
-
-        if (idx + 1) % side == 0 and idx != vqeclass.n_states - 1:
-            neighbours = np.delete(neighbours, 0)
-        if (idx    ) % side == 0 and idx != 0:
-            neighbours = np.delete(neighbours, 1)
-
-        states_dist.append(np.mean(np.square([np.real(states[n] - state) for n in neighbours]) ) )
-
-    ax[1].set_title('Mean square difference between neighbouring states')
-    diff = ax[1].imshow(np.rot90(np.reshape(states_dist, (side,side)) ) )
-    plt.colorbar(diff, ax=ax[1], fraction=0.04)
-    ax[1].set_xlabel('L')
-    ax[1].set_ylabel('K')
-
-    ax[1].set_xticks(ticks=np.linspace(0,side-1,4).astype(int), labels= np.round(x[np.linspace(side-1,0,4).astype(int)],2))
-    ax[1].set_yticks(ticks=np.linspace(0,side-1,4).astype(int), labels= np.round(y[np.linspace(side-1,0,4).astype(int)],2))
+    plt.xticks(ticks=np.linspace(0,side-1,4).astype(int), labels= np.round(x[np.linspace(side-1,0,4).astype(int)],2))
+    plt.yticks(ticks=np.linspace(0,side-1,4).astype(int), labels= np.round(y[np.linspace(side-1,0,4).astype(int)],2))
+        
     plt.tight_layout()
 
 def show_VQE_trajectory(vqeclass, idx):
