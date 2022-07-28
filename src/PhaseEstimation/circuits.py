@@ -5,7 +5,7 @@ import jax.numpy as jnp
 
 ##############
 
-def wall_gate(active_wires, gate, params = [], index = 0):
+def wall_gate(active_wires, gate, params = [], index = 0, samerot = False):
     """
     Apply independent rotations of the same gate for all the wires (active_wires)
     
@@ -26,10 +26,14 @@ def wall_gate(active_wires, gate, params = [], index = 0):
         Updated index value
     """
     if len(params) > 0:
-        for i, spin in enumerate(active_wires):
-            gate(params[index + i], wires = int(spin) )
-        return index + i + 1
-    
+        if not samerot:
+            for i, spin in enumerate(active_wires):
+                gate(params[index + i], wires = int(spin) )
+            return index + i + 1
+        else:
+            for spin in active_wires:
+                gate(params[index], wires = int(spin) )
+            return index + 1
     else:
         for spin in active_wires:
             gate(wires = int(spin) )
@@ -196,9 +200,6 @@ def pooling(active_wires, qmlrot_func, params, index = 0):
     np.ndarray
         Updated array of active wires (not measured)
     """
-    # Pooling:
-    isodd = True if len(active_wires) % 2 != 0 else False
-
     for wire_meas, wire_next in zip(active_wires[0::2], active_wires[1::2]):
         m_0 = qml.measure(int(wire_meas))
         qml.cond(m_0 == 0, qmlrot_func)(params[index], wires=int(wire_next))
@@ -210,10 +211,12 @@ def pooling(active_wires, qmlrot_func, params, index = 0):
 
     # ---- > If the number of wires is odd, the last wires is not pooled
     #        so we apply a gate
-    if isodd:
+    if len(active_wires) % 2 != 0:
         qmlrot_func(params[index], wires = int(active_wires[-1]) )
         index = index + 1
-
+     
+    index = wall_gate(active_wires, qml.RX, params, index)
+    
     return index, active_wires
 
 def convolution(active_wires, params, index = 0):
@@ -235,26 +238,41 @@ def convolution(active_wires, params, index = 0):
         Updated starting index of params array for further rotations
     """
     if len(active_wires) > 1:
-        # Convolution:
-        index = wall_gate(active_wires, qml.RX, params, index)
+         # Rotation Groups 2
+        for wire1, wire2 in zip(active_wires[0::2],active_wires[1::2]):
+            qml.RY(params[index], wires = int(wire1))
+            qml.RY(params[index], wires = int(wire2))
+            index += 1
+
+        if len(active_wires)%2 != 0:
+            qml.RY(params[index], wires = int(active_wires[-1]))
+            index += 1
+            
+        # CNOTS Groups 1
+        for wire1, wire2 in zip(active_wires[1::2],active_wires[2::2]):
+            qml.CNOT(wires = [int(wire1),int(wire2)])
+            
+        qml.Barrier()
+        
+        # Rotation Groups 1
+        qml.RY(params[index], wires = int(active_wires[0]))
+        index += 1
+        for wire1, wire2 in zip(active_wires[1::2],active_wires[2::2]):
+            qml.RY(params[index], wires = int(wire1))
+            qml.RY(params[index], wires = int(wire2))
+            index += 1
+
+        if len(active_wires)%2 == 0:
+            qml.RY(params[index], wires = int(active_wires[-1]))
+            index += 1
+            
+        # CNOTS Groups 2
+        for wire1, wire2 in zip(active_wires[0::2],active_wires[1::2]):
+            qml.CNOT(wires = [int(wire1),int(wire2)])
+        
         index = wall_gate(active_wires, qml.RY, params, index)
-
-        # ---- > Establish entanglement: odd connections
-        for wire, wire_next in zip(active_wires[0::2], active_wires[1::2]):
-            qml.CNOT(wires=[int(wire), int(wire_next)])
-            qml.RX(params[index], wires=int(wire))
-            index = index + 1
-
-        # ---- > Establish entanglement: even connections
-        for wire, wire_next in zip(active_wires[1::2], active_wires[2::2]):
-            qml.CNOT(wires=[int(wire), int(wire_next)])
-            qml.RX(params[index], wires=int(wire))
-            index = index + 1
-
-    qml.RX(params[index], wires=int(active_wires[-1]) )
-
-    return index + 1
-
+        
+    return index
 def encoder_block(wires, wires_trash, shift = 0):
     """
     Applies CX between a wire and a trash wire for each

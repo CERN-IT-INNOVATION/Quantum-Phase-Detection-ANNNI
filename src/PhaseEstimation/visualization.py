@@ -79,10 +79,10 @@ def show_VQE_isingchain(vqeclass, excited = False):
     k = 1
     if not vqeclass.recycle:
         ax[1].plot(
-            np.arange(len(vqeclass.MSE)) * 100, vqeclass.MSE, ".", color="orange", ms=7
+            np.arange(len(MSE)) * 100, MSE, ".", color="orange", ms=7
         )
         ax[1].plot(
-            np.arange(len(vqeclass.MSE)) * 100, vqeclass.MSE, color="orange", alpha=0.4
+            np.arange(len(MSE)) * 100, MSE, color="orange", alpha=0.4
         )
         ax[1].set_title("Convergence of VQE")
         ax[1].set_xlabel("Epoch")
@@ -215,15 +215,15 @@ def show_VQE_annni(vqeclass, log_heatmap = False, excited = False):
     
     if not excited:
         #states = vqeclass.states
-        trues = np.reshape(vqeclass.Hs.true_e0,(side, side) )
-        preds = np.reshape(vqeclass.vqe_e,(side, side) )
-        MSE = vqeclass.MSE
+        trues = np.reshape(vqeclass.true_e0,(side, side) )
+        preds = np.reshape(vqeclass.vqe_e0,(side, side) )
+        MSE = vqeclass.MSE0
         title = "Ground States of Ising Hamiltonian ({0}-spins), J = {1}"
     else:
         #states = vqeclass.states1
-        trues = np.reshape(vqeclass.Hs.true_e1,(side, side) )
+        trues = np.reshape(vqeclass.true_e1,(side, side) )
         preds = np.reshape(vqeclass.vqe_e1,(side, side) )
-        trues_gs = np.reshape(vqeclass.Hs.true_e,(side, side) )
+        trues_gs = np.reshape(vqeclass.true_e0,(side, side) )
         MSE = vqeclass.MSE1
         title = "Excited States of Ising Hamiltonian ({0}-spins), J = {1}"
 
@@ -240,11 +240,10 @@ def show_VQE_annni(vqeclass, log_heatmap = False, excited = False):
     fig.update_layout(height=500)
     fig.show()
 
-    if not vqeclass.recycle:
-        plt.figure(figsize=(15,3))
-        plt.title('Loss of training set')
-        plt.plot(np.arange(len(MSE)+1)[1:]*100, MSE)
-        plt.show()
+    plt.figure(figsize=(15,3))
+    plt.title('Loss of training set')
+    plt.plot(np.arange(len(MSE)+1)[1:]*100, MSE)
+    plt.show()
 
     accuracy = np.rot90( np.abs(preds-trues)/np.abs(trues) )
 
@@ -677,8 +676,8 @@ def show_QCNN_classification2D(qcnnclass, inject = False):
 
     plt.show()
     
-def show_QCNN_classificationANNNI(qcnnclass, inject = False):
-    circuit = qcnnclass.vqe_qcnn_circuit if inject == False else qcnnclass.psi_qcnn_circuit
+def show_QCNN_classificationANNNI(qcnnclass, hard_thr = True, lines = False):
+    circuit = qcnnclass.vqe_qcnn_circuit
     side = int(np.sqrt(qcnnclass.n_states))
     @qml.qnode(qcnnclass.device, interface="jax")
     def qcnn_circuit_prob(params_vqe, params):
@@ -690,45 +689,66 @@ def show_QCNN_classificationANNNI(qcnnclass, inject = False):
             return [qml.probs(wires=int(k)) for k in qcnnclass.final_active_wires]
         
     vcircuit = jax.vmap(lambda v: qcnn_circuit_prob(v, qcnnclass.params), in_axes=(0))
-    
-    if not inject:
-        predictions = np.array(np.argmax(vcircuit(qcnnclass.vqe_params), axis = 2))
-    else:
-        try:
-            qcnnclass.psi
-        except:
-            psi = []
-            for h in qcnnclass.vqe.Hs.mat_Hs:
-                # Compute eigenvalues and eigenvectors
-                eigval, eigvec = jnp.linalg.eigh(h)
-                # Get the eigenstate to the lowest eigenvalue
-                gstate = eigvec[:,jnp.argmin(eigval)]
 
-                psi.append(gstate)
-            psi = jnp.array(psi)
-            qcnnclass.psi = psi
-            
-        predictions = np.array(np.argmax(vcircuit(qcnnclass.psi), axis = 2))
-    
-    c = []
-    for pred in predictions:
-        if (pred == [0,1]).all():
-            c.append(0)
-        elif (pred == [1,1]).all():
-            c.append(1)
-        elif (pred == [1,0]).all():
-            c.append(2)
-        else: c.append(3)
+    if hard_thr:
+        predictions = np.array(np.argmax(vcircuit(qcnnclass.vqe_params), axis = 2))
+        c = []
+        for pred in predictions:
+            if (pred == [0,1]).all():
+                c.append(0)
+            elif (pred == [1,1]).all():
+                c.append(1)
+            elif (pred == [1,0]).all():
+                c.append(2)
+            else: c.append(3)
+
+        phases = mpl.colors.ListedColormap(["skyblue", "lightsalmon", "black", "palegreen"])
+        norm = mpl.colors.BoundaryNorm(np.arange(0,4), phases.N) 
+        plt.imshow( np.rot90(np.reshape(c, (side, side) )), 
+                                      cmap = phases, norm = norm)
+    else:
+        predictions = np.array(vcircuit(qcnnclass.vqe_params) )
+        c = []
         
-    phases = mpl.colors.ListedColormap(["navy", "crimson", "limegreen", "limegreen"])
-    norm = mpl.colors.BoundaryNorm(np.arange(0,4), phases.N) 
-    plt.imshow( np.rot90(np.reshape(c, (side, side) ) ), cmap = phases, norm = norm)
-    
+        # define color map 
+        color_map = {1: np.array([255, 0, 0]), # red
+                     2: np.array([0, 255, 0]), # green
+                     3: np.array([0, 0, 255])} # blue
+        
+        rgb_probs = np.ndarray(shape=(side*side, 3), dtype=float)
+        
+        for i, pred in enumerate(predictions):
+            p0 = 1 - np.sum(np.abs(pred[:,0] - [0,1]))/2
+            p1 = 1 - np.sum(np.abs(pred[:,0] - [1,1]))/2
+            p2 = 1 - np.sum(np.abs(pred[:,0] - [1,0]))/2
+            
+            rgb_probs[i] = [p2*255,p1*255,p0*255]
+        rgb_probs = np.rot90(np.reshape(rgb_probs, (side,side,3)) )/255
+        
+        plt.imshow( rgb_probs )
+        
     plt.title('Classification of ANNNI states')
     plt.ylabel('L')
     plt.xlabel('K')
     
-    plt.yticks(np.linspace(0,side-1,5), labels = np.round(np.linspace(2,0,5),2) )
+    def getlines(func, xrange, side, color, res = 100):
+        xs = np.linspace(xrange[0], xrange[1], res)
+        ys = func(xs)
+        
+        plt.plot(side*xs -.5, side - ys*side/2 -.5, color = color)
+        
+    def B2SA(x):
+        return 1.05 * np.sqrt((x-.5)*(x-.1))
     
-    plt.xticks(np.linspace(0,side-1,5), labels = np.round(np.linspace(0,-1,5),2) )
+    def ferropara(x):
+        return 1 - 2*x
+                    
+    if hard_thr:
+        getlines(ferropara, [0,.5], side, 'darkviolet', res = 100)
+        getlines(B2SA, [.5,1], side, 'blue', res = 100)
+    else:
+        getlines(ferropara, [0,.5], side, 'yellow', res = 100)
+        getlines(B2SA, [.5,1], side, 'aquamarine', res = 100)
+    
+    plt.show()
     

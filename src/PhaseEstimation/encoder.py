@@ -129,7 +129,7 @@ class encoder:
         self.params = np.array(np.random.rand(self.n_params) )
         self.device = vqe.device
 
-        self.vqe_params = np.array(vqe.vqe_params)
+        self.vqe_params0 = np.array(vqe.vqe_params0)
         self.train_index = []
         self.n_wires = self.N // 2 + self.N % 2
         self.n_trash = self.N // 2
@@ -181,7 +181,7 @@ class encoder:
             print(self.drawer)
 
         if not inject:
-            X_train = jnp.array(self.vqe_params[train_index])
+            X_train = jnp.array(self.vqe_params0[train_index])
 
             @qml.qnode(self.device, interface="jax")
             def q_encoder_circuit(vqe_params, params):
@@ -357,7 +357,7 @@ def enc_classification_ANNNI(vqeclass, lr, epochs, inject = False):
     
     encclass  = encoder(vqeclass, encoder_circuit)
     if not inject:
-        X = jnp.array(encclass.vqe_params)
+        X = jnp.array(encclass.vqe_params0)
 
         @qml.qnode(encclass.device, interface="jax")
         def encoder_circuit_class(vqe_params, params):
