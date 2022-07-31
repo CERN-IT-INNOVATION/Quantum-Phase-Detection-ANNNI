@@ -53,75 +53,9 @@ def vqe_fidelties_neighbouring(states):
     
     v_fidelty = jax.vmap(lambda s1, s2: vqe_fidelty(s1,s2), in_axes = (0, 0) )
 
-    
     return jnp.mean(v_fidelty(states[:-1], states[1:]))
 
-def compute_diff_states(states):
-    return jnp.mean(jnp.square(jnp.diff(jnp.real(states), axis=1)))
-
 # QCNN LOSSES
-def cross_entropy(X, Y, params, q_circuit):
-    """
-    LOSS: Compute Cross Entropy for a binary classification task
-    
-    Parameters
-    ----------
-    X : np.ndarray
-        Array of VQE parameters (input of VQE)
-    Y : np.ndarray
-        Array of labels
-    params : np.ndarray
-        Array of parameters of the QCNN circuit
-    q_circuit : fun
-        Quantum function of the VQE circuit
-        
-    Returns
-    -------
-    float
-        Cross entropy <Circuit(X)|Y>
-    """
-    v_qcnn_prob = jax.vmap(lambda v: q_circuit(v, params))
-
-    predictions = v_qcnn_prob(X)
-    logprobs = jnp.log(predictions)
-
-    nll = jnp.take_along_axis(logprobs, jnp.expand_dims(Y, axis=1), axis=1)
-    ce = -jnp.mean(nll)
-
-    return ce
-
-def cross_entropy_multiclass(X, Y, params, q_circuit):
-    """
-    LOSS: Compute Cross Entropy for a multi-class classification task
-    
-    Parameters
-    ----------
-    X : np.ndarray
-        Array of VQE parameters (input of VQE)
-    Y : np.ndarray
-        Array of labels
-    params : np.ndarray
-        Array of parameters of the QCNN circuit
-    q_circuit : fun
-        Quantum function of the VQE circuit
-        
-    Returns
-    -------
-    float
-        Mean Cross entropy <Circuit(X)|Y>
-    """
-    v_qcnn_prob = jax.vmap(lambda v: q_circuit(v, params))
-
-    predictions = v_qcnn_prob(X)
-    logprobs = jnp.log(predictions)
-    Y = Y.flatten()
-    logprobs = (jnp.reshape(logprobs.flatten(), (len(Y),2)))
-
-    nll = jnp.take_along_axis(logprobs, jnp.expand_dims(Y, axis=1), axis=1)
-    ce = - jnp.mean(nll)
-    
-    return ce
-
 def hinge(X, Y, params, q_circuit):
     """
     LOSS: (Experimental) Compute Hinge loss for a binary classification task
@@ -153,7 +87,26 @@ def hinge(X, Y, params, q_circuit):
     
     return hinge_loss
 
-def cross_entropy2(X, Y, params, q_circuit):
+def cross_entropy(X, Y, params, q_circuit):
+    """
+    LOSS: Compute Cross Entropy for a binary classification task
+    
+    Parameters
+    ----------
+    X : np.ndarray
+        Array of VQE parameters (input of VQE)
+    Y : np.ndarray
+        Array of labels
+    params : np.ndarray
+        Array of parameters of the QCNN circuit
+    q_circuit : fun
+        Quantum function of the VQE circuit
+        
+    Returns
+    -------
+    float
+        Cross entropy <Circuit(X)|Y>
+    """
     v_qcnn_prob = jax.vmap(lambda v: q_circuit(v, params))
 
     predictions = v_qcnn_prob(X)
