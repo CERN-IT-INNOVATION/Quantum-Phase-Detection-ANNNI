@@ -239,7 +239,6 @@ class vqe:
         self.true_e0 = np.array(true_E)
         
     def train_site(self, lr, n_epochs, site):
-        print(site)
         index = [site]
         H     = [ np.real(qml.matrix(self.Hs.qml_Hs[site])).astype(np.single) ]
         H     = jnp.array(H)
@@ -266,7 +265,6 @@ class vqe:
                     neighbours = np.array(qmlgen.get_neighbours(self, site))
                     neighbours_accuracies = np.abs((self.vqe_e0[neighbours] - self.true_e0[neighbours])/self.true_e0[neighbours])
                     best_neighbour = neighbours[np.argmin(neighbours_accuracies)]
-                    print(site, best_neighbour)
                     self.vqe_params0[site] = copy.copy(self.vqe_params0[best_neighbour])
                 self.train_site(lr, n_epochs, int(site) )
 

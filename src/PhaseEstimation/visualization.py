@@ -29,14 +29,14 @@ def show_VQE_isingchain(vqeclass, excited = False):
             return
     
     if not excited:
-        true_e = vqeclass.Hs.true_e0
-        vqe_e  = vqeclass.vqe_e
-        MSE = vqeclass.MSE
-        vqe_params = vqeclass.vqe_params
+        true_e = vqeclass.true_e0
+        vqe_e  = vqeclass.vqe_e0
+        MSE = vqeclass.MSE0
+        vqe_params = vqeclass.vqe_params0
         title = "Ground States of Ising Hamiltonian ({0}-spins), J = {1}"
     else:
-        true_e = vqeclass.Hs.true_e1
-        true_gs_e = vqeclass.Hs.true_e0
+        true_e = vqeclass.true_e1
+        true_gs_e = vqeclass.true_e0
         vqe_e  = vqeclass.vqe_e1 
         MSE = vqeclass.MSE1
         vqe_params = vqeclass.vqe_params1
@@ -47,19 +47,11 @@ def show_VQE_isingchain(vqeclass, excited = False):
         vqeclass.circuit(vqe_params)
 
         return qml.state()
+    
     j_q_vqe_state = jax.jit(q_vqe_state)
     
-    state_pred = j_q_vqe_state(vqe_params[0])
-    state_curr = j_q_vqe_state(vqe_params[1])
-    states_dist = [np.mean(np.square(np.real(state_curr - state_pred)))]
-    state_pred = state_curr
-    for i in range(2,vqeclass.n_states):
-        state_curr = j_q_vqe_state(vqe_params[i])
-        states_dist.append(float(np.mean(np.square(np.real(state_curr - state_pred)))) )
-        state_pred = state_curr
-    
     lams = np.linspace(0, 2*vqeclass.Hs.J, vqeclass.n_states)
-    tot_plots = 3 if vqeclass.recycle else 4
+    tot_plots = 2 if len(MSE)==0 else 3
     fig, ax = plt.subplots(tot_plots, 1, figsize=(12, 18.6))
 
     ax[0].plot(lams, true_e, "--", label="True", color="red", lw=3)
@@ -76,8 +68,7 @@ def show_VQE_isingchain(vqeclass, excited = False):
     ax[0].set_ylabel(r"$E(\lambda)$")
     ax[0].legend()
 
-    k = 1
-    if not vqeclass.recycle:
+    if len(MSE)!=0:
         ax[1].plot(
             np.arange(len(MSE)) * 100, MSE, ".", color="orange", ms=7
         )
@@ -90,33 +81,19 @@ def show_VQE_isingchain(vqeclass, excited = False):
         ax[1].grid(True)
         ax[1].axhline(y=0, color="r", linestyle="--")
 
-        k = 2
-
     accuracy = np.abs((true_e - vqe_e) / true_e)
-    ax[k].fill_between(
+    ax[tot_plots-1].fill_between(
         lams, 0.01, max(np.max(accuracy), 0.01), color="r", alpha=0.3
     )
-    ax[k].fill_between(
+    ax[tot_plots-1].fill_between(
         lams, 0.01, min(np.min(accuracy), 0), color="green", alpha=0.3
     )
-    ax[k].axhline(y=0.01, color="r", linestyle="--")
-    ax[k].scatter(lams, accuracy)
-    ax[k].grid(True)
-    ax[k].set_title("Accuracy of VQE".format(vqeclass.N, vqeclass.Hs.J))
-    ax[k].set_xlabel(r"$\lambda$")
-    ax[k].set_ylabel(r"$|(E_{vqe} - E_{true})/E_{true}|$")
-
-    ax[k + 1].set_title(
-        r"MSE($|\psi_k>, |\psi_{k-1}>$)"
-    )
-    ax[k + 1].plot(
-        lams[1:],
-        states_dist,
-        "-o",
-    )
-    ax[k + 1].grid(True)
-    ax[k + 1].axvline(x=vqeclass.Hs.J, color="gray", linestyle="--")
-    ax[k + 1].set_xlabel(r"$\lambda$")
+    ax[tot_plots-1].axhline(y=0.01, color="r", linestyle="--")
+    ax[tot_plots-1].scatter(lams, accuracy)
+    ax[tot_plots-1].grid(True)
+    ax[tot_plots-1].set_title("Accuracy of VQE".format(vqeclass.N, vqeclass.Hs.J))
+    ax[tot_plots-1].set_xlabel(r"$\lambda$")
+    ax[tot_plots-1].set_ylabel(r"$|(E_{vqe} - E_{true})/E_{true}|$")
 
     plt.tight_layout()
     
@@ -241,7 +218,7 @@ def show_VQE_annni(vqeclass, log_heatmap = False, excited = False):
     fig.show()
 
     plt.figure(figsize=(15,3))
-    plt.title('Loss of training set')
+    plt.title('Convergence of VQE states')
     plt.plot(np.arange(len(MSE)+1)[1:]*100, MSE)
     plt.show()
 
@@ -301,13 +278,13 @@ def show_VQE_trajectory(vqeclass, idx):
     plt.legend()
     plt.show()
     
-def show_QCNN_classification1D(qcnnclass, inject = False):
+def show_QCNN_classification1D(qcnnclass):
     """
     Plots performance of the classifier on the whole data
     """
     train_index = qcnnclass.train_index
 
-    circuit = qcnnclass.vqe_qcnn_circuit if inject == False else qcnnclass.psi_qcnn_circuit
+    circuit = qcnnclass.vqe_qcnn_circuit
     
     @qml.qnode(qcnnclass.device, interface="jax")
     def qcnn_circuit_prob(params_vqe, params):
@@ -325,25 +302,8 @@ def show_QCNN_classification1D(qcnnclass, inject = False):
 
     vcircuit = jax.vmap(lambda v: qcnn_circuit_prob(v, qcnnclass.params), in_axes=(0))
     
-    if not inject:
-        predictions = vcircuit(qcnnclass.vqe_params)[:, 1]
-    else:
-        try:
-            qcnnclass.psi
-        except:
-            psi = []
-            for h in qcnnclass.vqe.Hs.mat_Hs:
-                # Compute eigenvalues and eigenvectors
-                eigval, eigvec = jnp.linalg.eigh(h)
-                # Get the eigenstate to the lowest eigenvalue
-                gstate = eigvec[:,jnp.argmin(eigval)]
-
-                psi.append(gstate)
-            psi = jnp.array(psi)
-            qcnnclass.psi = psi
-            
-        predictions = vcircuit(qcnnclass.psi)[:, 1]
-
+    predictions = vcircuit(qcnnclass.vqe_params)[:, 1]
+    
     for i, prediction in enumerate(predictions):
         # if data in training set
         if i in train_index:
@@ -413,7 +373,6 @@ def show_QCNN_classification1D(qcnnclass, inject = False):
         predictions_test,
         c=colors_test,
     )
-    
     
 def show_VQE_crossfidelties(vqeclass):
     heatmap = np.zeros((vqeclass.n_states,vqeclass.n_states))
@@ -700,7 +659,8 @@ def show_QCNN_classificationANNNI(qcnnclass, hard_thr = True, lines = False):
                 c.append(2)
             else: c.append(3)
 
-        phases = mpl.colors.ListedColormap(["skyblue", "lightsalmon", "black", "palegreen"])
+        phases = mpl.colors.ListedColormap(["lightcoral", "skyblue",
+                                            "black", "palegreen"])
         norm = mpl.colors.BoundaryNorm(np.arange(0,4), phases.N) 
         plt.imshow( np.rot90(np.reshape(c, (side, side) )), 
                                       cmap = phases, norm = norm)
@@ -746,12 +706,8 @@ def show_QCNN_classificationANNNI(qcnnclass, hard_thr = True, lines = False):
     def ferropara(x):
         return 1 - 2*x
                     
-    if hard_thr:
-        getlines(ferropara, [0,.5], side, 'darkviolet', res = 100)
-        getlines(B2SA, [.5,1], side, 'blue', res = 100)
-    else:
-        getlines(ferropara, [0,.5], side, 'yellow', res = 100)
-        getlines(B2SA, [.5,1], side, 'aquamarine', res = 100)
+    getlines(ferropara, [0,.5], side, 'yellow', res = 100)
+    getlines(B2SA, [.5,1], side, 'yellow', res = 100)
     
     x = np.linspace(1, 0, side)
     y = np.linspace(0, 2, side)

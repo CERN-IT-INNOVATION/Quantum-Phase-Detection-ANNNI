@@ -87,6 +87,36 @@ def hinge(X, Y, params, q_circuit):
     
     return hinge_loss
 
+def cross_entropy1D(X, Y, params, q_circuit):
+    """
+    LOSS: Compute Cross Entropy for a binary classification task
+    
+    Parameters
+    ----------
+    X : np.ndarray
+        Array of VQE parameters (input of VQE)
+    Y : np.ndarray
+        Array of labels
+    params : np.ndarray
+        Array of parameters of the QCNN circuit
+    q_circuit : fun
+        Quantum function of the VQE circuit
+        
+    Returns
+    -------
+    float
+        Cross entropy <Circuit(X)|Y>
+    """
+    v_qcnn_prob = jax.vmap(lambda v: q_circuit(v, params))
+
+    predictions = v_qcnn_prob(X)
+    logprobs = jnp.log(predictions)
+
+    nll = jnp.take_along_axis(logprobs, jnp.expand_dims(Y, axis=1), axis=1)
+    ce = -jnp.mean(nll)
+
+    return ce
+
 def cross_entropy(X, Y, params, q_circuit):
     """
     LOSS: Compute Cross Entropy for a binary classification task

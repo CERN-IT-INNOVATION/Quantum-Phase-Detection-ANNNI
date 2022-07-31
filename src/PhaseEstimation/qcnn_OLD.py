@@ -109,7 +109,7 @@ class qcnn:
             if n_outputs == 1:
                 return qml.probs(wires=self.N - 1)
             else:
-                return qml.probs([int(k) for k in self.final_active_wires])
+                return [qml.probs(wires=int(k)) for k in active_wires]
             
         self.drawer = qml.draw(circuit_drawer)(self)
     
@@ -159,20 +159,6 @@ class qcnn:
             
             #mask = jnp.array(myqcnn.vqe.Hs.model_params)[:,1] == 0
             X, Y = self.vqe_params[mask], self.labels[mask,:].astype(int)
-            
-            Ymix = []
-            for label in Y:
-                if (label == [0,0]).all():
-                    Ymix.append([1,0,0,0])
-                elif (label == [0,1]).all():
-                    Ymix.append([0,1,0,0])
-                elif (label == [1,0]).all():
-                    Ymix.append([0,0,1,0])
-                elif (label == [1,1]).all():
-                    Ymix.append([0,0,0,1])
-                
-            Y = jnp.array(Ymix)
-            print(len(Y))
             test_index = np.setdiff1d(np.arange(len(Y)), train_index)
             
             X_train, Y_train = X[train_index], Y[train_index]
@@ -190,9 +176,34 @@ class qcnn:
             if self.n_outputs == 1:
                 return qml.probs(wires=self.N - 1)
             else:
-                return qml.probs([int(k) for k in self.final_active_wires])
+                return [qml.probs(wires=int(k)) for k in self.final_active_wires]
         
         params = copy.copy(self.params)
+
+        if inject:
+            psi = []
+            for h in self.vqe.Hs.mat_Hs:
+                # Compute eigenvalues and eigenvectors
+                eigval, eigvec = jnp.linalg.eigh(h)
+                # Get the eigenstate to the lowest eigenvalue
+                gstate = eigvec[:,jnp.argmin(eigval)]
+
+                psi.append(gstate)
+            psi = jnp.array(psi)
+            self.psi = psi
+            
+            X_train = jnp.array(psi[train_index])
+            test_index = np.setdiff1d(np.arange(len(psi)), train_index)
+            X_test  = jnp.array(psi[test_index])
+
+            @qml.qnode(self.device, interface="jax")
+            def qcnn_circuit_prob(psi, qcnn_p):
+                self.psi_qcnn_circuit(psi, qcnn_p)
+
+                if self.n_outputs == 1:
+                    return qml.probs(wires=self.N - 1)
+                else:
+                    return [qml.probs(wires=int(k)) for k in self.final_active_wires]
         
         # Gradient of the Loss function
         jd_loss_fn = jax.jit(

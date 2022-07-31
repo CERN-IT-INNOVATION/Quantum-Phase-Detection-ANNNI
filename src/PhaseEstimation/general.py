@@ -157,7 +157,7 @@ def get_neighbours(vqeclass, idx):
     neighbours = np.delete(neighbours, np.logical_not(np.isin(neighbours, vqeclass.Hs.recycle_rule)) )
 
 
-    if (idx + 1) % side == 0 and idx != self.n_states - 1:
+    if (idx + 1) % side == 0 and idx != vqeclass.n_states - 1:
         neighbours = np.delete(neighbours, 0)
     if (idx    ) % side == 0 and idx != 0:
         neighbours = np.delete(neighbours, 1)
