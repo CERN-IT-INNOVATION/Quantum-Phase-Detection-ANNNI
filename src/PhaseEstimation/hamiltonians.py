@@ -1,11 +1,6 @@
 """ This module implements the base class for spin-models Hamiltonians"""
-import pennylane as qml
-from pennylane import numpy as np
-import jax.numpy as jnp
-
-import sys, os
+import sys
 sys.path.insert(0, '../../')
-import PhaseEstimation.general as qmlgen
 
 ##############
 
