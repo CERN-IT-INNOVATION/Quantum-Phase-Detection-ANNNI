@@ -152,3 +152,14 @@ def hinge(X, Y, params, q_circuit):
     hinge_loss = jnp.mean(1 - predictions[:,1]*Y_hinge)
     
     return hinge_loss
+
+def cross_entropy2(X, Y, params, q_circuit):
+    v_qcnn_prob = jax.vmap(lambda v: q_circuit(v, params))
+
+    predictions = v_qcnn_prob(X)
+    logprobs1 = jnp.log(predictions).flatten()
+    logprobs2 = jnp.log(1 - predictions).flatten()
+    Y = Y.flatten()
+    
+    return - jnp.mean( Y*logprobs1 + (1 - Y)* logprobs2)
+

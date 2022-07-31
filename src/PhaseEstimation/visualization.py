@@ -679,18 +679,16 @@ def show_QCNN_classification2D(qcnnclass, inject = False):
 def show_QCNN_classificationANNNI(qcnnclass, hard_thr = True, lines = False):
     circuit = qcnnclass.vqe_qcnn_circuit
     side = int(np.sqrt(qcnnclass.n_states))
-    @qml.qnode(qcnnclass.device, interface="jax")
-    def qcnn_circuit_prob(params_vqe, params):
-        circuit(params_vqe, params)
-
-        if qcnnclass.n_outputs == 1:
-            return qml.probs(wires=self.N - 1)
-        else:
+    
+    if hard_thr:
+        @qml.qnode(qcnnclass.device, interface="jax")
+        def qcnn_circuit_prob(params_vqe, params):
+            circuit(params_vqe, params)
+        
             return [qml.probs(wires=int(k)) for k in qcnnclass.final_active_wires]
         
-    vcircuit = jax.vmap(lambda v: qcnn_circuit_prob(v, qcnnclass.params), in_axes=(0))
-
-    if hard_thr:
+        vcircuit = jax.vmap(lambda v: qcnn_circuit_prob(v, qcnnclass.params), in_axes=(0))
+    
         predictions = np.array(np.argmax(vcircuit(qcnnclass.vqe_params), axis = 2))
         c = []
         for pred in predictions:
@@ -707,7 +705,16 @@ def show_QCNN_classificationANNNI(qcnnclass, hard_thr = True, lines = False):
         plt.imshow( np.rot90(np.reshape(c, (side, side) )), 
                                       cmap = phases, norm = norm)
     else:
+        @qml.qnode(qcnnclass.device, interface="jax")
+        def qcnn_circuit_prob(params_vqe, params):
+            circuit(params_vqe, params)
+        
+            return qml.probs([int(k) for k in qcnnclass.final_active_wires])
+        
+        vcircuit = jax.vmap(lambda v: qcnn_circuit_prob(v, qcnnclass.params), in_axes=(0))
+    
         predictions = np.array(vcircuit(qcnnclass.vqe_params) )
+        
         c = []
         
         # define color map 
@@ -718,11 +725,7 @@ def show_QCNN_classificationANNNI(qcnnclass, hard_thr = True, lines = False):
         rgb_probs = np.ndarray(shape=(side*side, 3), dtype=float)
         
         for i, pred in enumerate(predictions):
-            p0 = 1 - np.sum(np.abs(pred[:,0] - [0,1]))/2
-            p1 = 1 - np.sum(np.abs(pred[:,0] - [1,1]))/2
-            p2 = 1 - np.sum(np.abs(pred[:,0] - [1,0]))/2
-            
-            rgb_probs[i] = [p2*255,p1*255,p0*255]
+            rgb_probs[i] = [pred[1]*255,pred[2]*255,pred[3]*255]
         rgb_probs = np.rot90(np.reshape(rgb_probs, (side,side,3)) )/255
         
         plt.imshow( rgb_probs )
@@ -750,5 +753,10 @@ def show_QCNN_classificationANNNI(qcnnclass, hard_thr = True, lines = False):
         getlines(ferropara, [0,.5], side, 'yellow', res = 100)
         getlines(B2SA, [.5,1], side, 'aquamarine', res = 100)
     
+    x = np.linspace(1, 0, side)
+    y = np.linspace(0, 2, side)
+
+    plt.xticks(ticks=np.linspace(0,side-1,4).astype(int), labels= np.round(x[np.linspace(side-1,0,4).astype(int)],2))
+    plt.yticks(ticks=np.linspace(0,side-1,4).astype(int), labels= np.round(y[np.linspace(side-1,0,4).astype(int)],2))
     plt.show()
     
