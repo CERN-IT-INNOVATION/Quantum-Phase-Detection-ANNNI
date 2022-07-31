@@ -19,7 +19,7 @@ warnings.filterwarnings(
     message="For Hamiltonians, the eigenvalues will be computed numerically. This may be computationally intensive for a large number of wires.Consider using a sparse representation of the Hamiltonian with qml.SparseHamiltonian.",
 )
 
-import sys, os
+import sys
 sys.path.insert(0, '../../')
 import PhaseEstimation.circuits as circuits
 
