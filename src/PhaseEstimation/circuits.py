@@ -1,8 +1,6 @@
 """ This module implements base circuits layout for all the models used"""
 import pennylane as qml
 from pennylane import numpy as np
-import jax.numpy as jnp
-
 ##############
 
 def wall_gate(active_wires, gate, params = [], index = 0, samerot = False):
