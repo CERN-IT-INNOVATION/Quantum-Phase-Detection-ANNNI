@@ -163,3 +163,31 @@ def get_neighbours(vqeclass, idx):
         neighbours = np.delete(neighbours, 1)
         
     return neighbours
+
+def find_kink(f,x):
+    '''
+    Find kink (non differentiable point) of a function,
+    used to find TODO
+    It is assumed the existence of ONLY ONE non differentiable point
+    
+    
+    
+    Parameters
+    ----------
+    f : function
+        Function non differentiable at a place y
+    x : np.ndarray
+        x-values of the function
+        
+    Returns
+    -------
+    int
+        index of the x array of the non differentiable point
+    float
+        non-differentiable x-value of f
+    '''
+    
+    dfdx = [(f[i+1]-f[i])/(x[i+1]-x[i]) for i in range(len(x)-1)] 
+    it = np.argmax([abs(dfdx[i]-dfdx[i-1]) for i in range(1,len(x)-1)])
+    
+    return it+1, x[it+1]
