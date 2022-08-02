@@ -269,6 +269,53 @@ class vqe:
                 self.train_site(lr, n_epochs, int(site) )
 
             progress.update(1)
+          
+    def train_site_excited(self, lr, n_epochs, site, beta):
+        # Get all the necessary training parameters for the VQD algorithm
+        # > H: Hamiltonian of the model
+        # > H_eff: Effective Hamiltonian for the model (H +|psi><psi|)
+        # > site: index for (L,K) combination
+        H, H_eff, self.true_e1[site] = qmlgen.get_VQD_params(self.Hs.qml_Hs[site], beta)
+        
+        param = copy.copy(self.vqe_params1[[site]])
+        opt_init, opt_update, get_params = optimizers.adam(lr)
+        opt_state = opt_init(param)
+        for it in range(n_epochs):
+            param, opt_state = self.update(param, H_eff, opt_state, opt_update, get_params)
+            
+        self.vqe_e1[site]      = self.jv_compute_vqe_E(self.jv_q_vqe_state(param), H)
+        self.vqe_params1[site] = param
+        
+    def train_excited(self, lr, n_epochs, beta):
+        self.vqe_e1, self.vqe_params1, self.true_e1 = np.zeros((self.n_states,)), np.zeros((self.n_states,self.n_params)), np.zeros((self.n_states,))
+        
+        progress = tqdm(self.Hs.recycle_rule, position=0, leave=True)
+        for site in progress:
+            epochs = 10*n_epochs if site == 0 else n_epochs
+            if site == 0:
+                epochs = 10*n_epochs
+                self.vqe_params1[site] = jnp.array( np.random.uniform(-np.pi, np.pi, size=(self.n_params)) ) 
+            else:
+                epochs = n_epochs
+                self.vqe_params1[site] = copy.copy(self.vqe_params1[pred_site])
+                
+            self.train_site_excited(lr, epochs, int(site), beta)
+            pred_site = site
+            
+    def train_refine_excited(self, lr, n_epochs, acc_thr, beta, assist = False):
+        progress = tqdm(range(self.n_states), position=0, leave=True)
+        for site in self.Hs.recycle_rule:
+            accuracy = np.abs((self.vqe_e1[site] - self.true_e1[site])/self.true_e1[site])
+
+            if accuracy > acc_thr:
+                if assist:
+                    neighbours = np.array(qmlgen.get_neighbours(self, site))
+                    neighbours_accuracies = np.abs((self.vqe_e1[neighbours] - self.true_e1[neighbours])/self.true_e1[neighbours])
+                    best_neighbour = neighbours[np.argmin(neighbours_accuracies)]
+                    self.vqe_params1[site] = copy.copy(self.vqe_params1[best_neighbour])
+                self.train_site_excited(lr, n_epochs, int(site), beta)
+
+            progress.update(1)
 
     def save(self, filename):
         """
@@ -330,12 +377,14 @@ def load_vqe(filename):
 
     if len(things_to_load) == 5:
         Hs, vqe_params, vqe_e, true_e, circuit_fun = things_to_load
+        loaded_vqe = vqe(Hs, circuit_fun)
     else:
         Hs, vqe_params, vqe_e, true_e, vqe_params1, vqe_e1, true_e1, circuit_fun = things_to_load
+        loaded_vqe = vqe(Hs, circuit_fun)
         loaded_vqe.vqe_params1 = vqe_params1
         loaded_vqe.vqe_e1 = vqe_e1
         loaded_vqe.true_e1 = true_e1
-    loaded_vqe = vqe(Hs, circuit_fun)
+    
     loaded_vqe.vqe_params0 = vqe_params
     loaded_vqe.vqe_e0 = vqe_e
     loaded_vqe.true_e0 = true_e
