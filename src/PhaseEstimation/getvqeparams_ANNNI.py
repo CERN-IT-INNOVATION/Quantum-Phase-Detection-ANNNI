@@ -1,7 +1,9 @@
 """
 This script saves a trained VQE 
 To run it:
-    ./getvqeparams_ANNNI.py N side epochs
+    ./getvqeparams_ANNNI.py N side epochs ring
+    ring = 0 False
+    ring = 1 True
 """
 
 # Other
@@ -19,7 +21,7 @@ side = int(sys.argv[2])
 epochs = int(sys.argv[3])
 
 # Initialize Hamiltonian
-Hs = ham.hamiltonian(annni.build_Hs, N = N, n_states = side)
+Hs = ham.hamiltonian(annni.build_Hs, N = N, n_states = side, ring = bool(sys.argv[4]) )
 # Initialize VQE
 myvqe = vqe.vqe(Hs, vqe.circuit_ising)
 
@@ -29,4 +31,7 @@ myvqe.train(0.3, epochs, circuit = False, recycle = True, epochs_batch_size = ep
 myvqe.train_refine(0.1, 2*epochs, 0.01)
 
 # Save the VQE
-myvqe.save('./N'+str(N)+'n'+str(side)+'.pkl')
+if sys.argv[4] == 1:
+	myvqe.save('./N'+str(N)+'n'+str(side)+'ring.pkl')
+else:
+	myvqe.save('./N'+str(N)+'n'+str(side)+'.pkl')

@@ -213,7 +213,7 @@ def pooling(active_wires, qmlrot_func, params, index = 0):
         qmlrot_func(params[index], wires = int(active_wires[-1]) )
         index = index + 1
      
-    index = wall_gate(active_wires, qml.RX, params, index)
+    #index = wall_gate(active_wires, qml.RX, params, index)
     
     return index, active_wires
 
@@ -271,6 +271,7 @@ def convolution(active_wires, params, index = 0):
         index = wall_gate(active_wires, qml.RY, params, index)
         
     return index
+
 def encoder_block(wires, wires_trash, shift = 0):
     """
     Applies CX between a wire and a trash wire for each

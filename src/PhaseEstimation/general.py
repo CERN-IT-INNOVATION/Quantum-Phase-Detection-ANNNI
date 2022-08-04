@@ -115,6 +115,39 @@ def psi_outer(psi):
 j_psi_outer = jax.jit(psi_outer)
 jv_psi_outer = jax.jit(jax.vmap(psi_outer))
 
+def get_VQD_params(qml_H, beta):
+    """
+    Function for getting all the training parameter for the VQD
+    algorithm for finding the first excited state
+        
+    Parameters
+    ----------
+    qml_H : pennylane.ops.qubit.hamiltonian.Hamiltonian
+        Pennylane Hamiltonian of the Ising Model
+        
+    Returns
+    -------
+    np.ndarray
+        Matricial encoding of the Hamiltonian
+    np.ndarray
+        Effective Hamiltonian of VQD algorithm
+    float
+        Excited energy value
+    """
+    
+    # Get the matricial for of the hamiltonian
+    # and convert it to float32 
+    # This type of hamiltonians are always real
+    mat_H = np.real(qml.matrix(qml_H)).astype(np.single)
+    
+    # Compute sorted eigenvalues with jitted function
+    eigvals, eigvecs = j_linalgeigh(mat_H)
+    
+    psi0 = eigvecs[:,jnp.argsort(eigvals)[0]]
+    en_ex = jnp.sort(eigvals)[1]
+    
+    return jnp.array([mat_H]), jnp.array([mat_H + beta * j_psi_outer(psi0)]), en_ex
+
 def get_neighbours(vqeclass, idx):
     """
     Function for getting the neighbouring indexes
