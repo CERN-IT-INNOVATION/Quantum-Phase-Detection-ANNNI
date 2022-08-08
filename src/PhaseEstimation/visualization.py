@@ -9,9 +9,6 @@ from matplotlib import pyplot as plt
 from matplotlib.colors import LinearSegmentedColormap, LogNorm, Normalize
 import plotly.graph_objects as go
 import pandas as pd
-from orqviz.scans import perform_2D_scan, plot_2D_scan_result
-from orqviz.pca import (get_pca, perform_2D_pca_scan, plot_pca_landscape, 
-                        plot_optimization_trajectory_on_pca)
 
 def show_VQE_isingchain(vqeclass, excited = False):
     """
@@ -218,13 +215,13 @@ def show_VQE_annni(vqeclass, log_heatmap = False, excited = False, plot3d = True
         plt.imshow(accuracy, cmap = cmap_acc, norm=LogNorm())
         plt.colorbar(fraction=0.04)
 
-    plt.xlabel('L')
-    plt.ylabel('K')
-    plt.title('Relative errors')
+    plt.title('Accuracies of VQE-states N={0}'.format(vqeclass.N))
+    plt.ylabel(r'$B/\,J_1$')
+    plt.xlabel(r'$J_1/\,J_2$')
 
-    plt.xticks(ticks=np.linspace(0,side-1,4).astype(int), labels= np.round(x[np.linspace(side-1,0,4).astype(int)],2))
-    plt.yticks(ticks=np.linspace(0,side-1,4).astype(int), labels= np.round(y[np.linspace(side-1,0,4).astype(int)],2))
-        
+    plt.xticks(ticks=np.linspace(0,side-1,5).astype(int), labels= [np.round(k*1/4,2) for k in range(0,5)] )
+    plt.yticks(ticks=np.linspace(0,side-1,5).astype(int), labels= [np.round(k*2/4,2) for k in range(4,-1,-1)])
+    
     plt.tight_layout()
 
 def show_VQE_trajectory(vqeclass, idx):
@@ -614,7 +611,7 @@ def show_QCNN_classification2D(qcnnclass, inject = False):
 
     plt.show()
     
-def show_QCNN_classificationANNNI(qcnnclass, hard_thr = True, lines = False, deltaeline = []):
+def show_QCNN_classificationANNNI(qcnnclass, hard_thr = True, lines = False, deltaeline = [], train_index = [], label = False):
     circuit = qcnnclass.vqe_qcnn_circuit
     side = int(np.sqrt(qcnnclass.n_states))
     
@@ -669,9 +666,8 @@ def show_QCNN_classificationANNNI(qcnnclass, hard_thr = True, lines = False, del
         
         plt.imshow( rgb_probs )
         
-    plt.title('Classification of ANNNI states')
-    plt.ylabel('L')
-    plt.xlabel('K')
+    plt.ylabel(r'$h\,/\,J_1$')
+    plt.xlabel(r'$K$')
     
     def getlines(func, xrange, side, color, res = 100):
         xs = np.linspace(xrange[0], xrange[1], res)
@@ -685,16 +681,27 @@ def show_QCNN_classificationANNNI(qcnnclass, hard_thr = True, lines = False, del
     def ferropara(x):
         return 1 - 2*x
                     
-    getlines(B2SA, [.5,1], side, 'yellow', res = 100)
+    getlines(B2SA, [.5,1], side, 'white', res = 100)
+    getlines(ferropara, [0,.5], side, 'white', res = 100)
     
     x = np.linspace(1, 0, side)
     y = np.linspace(0, 2, side)
 
-    plt.xticks(ticks=np.linspace(0,side-1,4).astype(int), labels= np.round(x[np.linspace(side-1,0,4).astype(int)],2))
-    plt.yticks(ticks=np.linspace(0,side-1,4).astype(int), labels= np.round(y[np.linspace(side-1,0,4).astype(int)],2))
+    plt.xticks(ticks=np.linspace(0,side-1,5).astype(int), labels= [np.round(k*1/4,2) for k in range(0,5)] )
+    plt.yticks(ticks=np.linspace(0,side-1,5).astype(int), labels= [np.round(k*2/4,2) for k in range(4,-1,-1)])
     
     if len(deltaeline)>0:
-        plt.plot([side/2]*int(side/2) + (side/2) * deltaeline, '--', color ='white')
-    else:
-        getlines(ferropara, [0,.5], side, 'yellow', res = 100)
-    plt.show()
+        plt.plot([side/2]*int(side/2) + (side/2) * deltaeline, '--', color ='black', lw= 2.5)
+        
+    if len(train_index)>0:
+        x_star, y_star = [], []
+        for idx in train_index:
+            x_star.append(idx//side)
+            y_star.append(side - idx%side - .5)
+        plt.scatter(x_star, y_star, marker = 'o', color = 'yellow', s = 205, alpha =1)
+        plt.ylim(side-1,0)
+        plt.xlim(0,side-1)
+    
+    if label:
+        plt.figtext(.33, .8, '('+label+')', color = 'white', fontsize=14)
+        
