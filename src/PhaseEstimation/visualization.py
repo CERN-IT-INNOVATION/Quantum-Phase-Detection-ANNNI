@@ -157,7 +157,7 @@ def show_VQE_nnisingchain(vqeclass):
 
     plt.tight_layout()
 
-def show_VQE_annni(vqeclass, log_heatmap = False, excited = False):
+def show_VQE_annni(vqeclass, log_heatmap = False, excited = False, plot3d = True):
     """
     Shows results of a trained VQE run:
     > VQE enegies plot
@@ -189,16 +189,17 @@ def show_VQE_annni(vqeclass, log_heatmap = False, excited = False):
 
     x = np.linspace(1, 0, side)
     y = np.linspace(0, 2, side)
+    
+    if plot3d:
+        if excited:
+            fig = go.Figure(data=[go.Surface(opacity=.2, colorscale='Reds', z=trues, x=x, y=y),
+                      go.Surface(opacity=1, colorscale='Blues',z=preds, x=x, y=y), go.Surface(opacity=.6, colorscale='plasma',z=trues_gs, x=x, y=y)])
+        else:
+            fig = go.Figure(data=[go.Surface(opacity=.2, colorscale='Reds', z=trues, x=x, y=y),
+                      go.Surface(opacity=1, colorscale='Blues',z=preds, x=x, y=y)])
 
-    if excited:
-        fig = go.Figure(data=[go.Surface(opacity=.2, colorscale='Reds', z=trues, x=x, y=y),
-                  go.Surface(opacity=1, colorscale='Blues',z=preds, x=x, y=y), go.Surface(opacity=.6, colorscale='plasma',z=trues_gs, x=x, y=y)])
-    else:
-        fig = go.Figure(data=[go.Surface(opacity=.2, colorscale='Reds', z=trues, x=x, y=y),
-                  go.Surface(opacity=1, colorscale='Blues',z=preds, x=x, y=y)])
-        
-    fig.update_layout(height=500)
-    fig.show()
+        fig.update_layout(height=500)
+        fig.show()
 
     accuracy = np.rot90( np.abs(preds-trues)/np.abs(trues) )
 
@@ -613,7 +614,7 @@ def show_QCNN_classification2D(qcnnclass, inject = False):
 
     plt.show()
     
-def show_QCNN_classificationANNNI(qcnnclass, hard_thr = True, lines = False):
+def show_QCNN_classificationANNNI(qcnnclass, hard_thr = True, lines = False, deltaeline = []):
     circuit = qcnnclass.vqe_qcnn_circuit
     side = int(np.sqrt(qcnnclass.n_states))
     
@@ -684,7 +685,6 @@ def show_QCNN_classificationANNNI(qcnnclass, hard_thr = True, lines = False):
     def ferropara(x):
         return 1 - 2*x
                     
-    getlines(ferropara, [0,.5], side, 'yellow', res = 100)
     getlines(B2SA, [.5,1], side, 'yellow', res = 100)
     
     x = np.linspace(1, 0, side)
@@ -692,5 +692,9 @@ def show_QCNN_classificationANNNI(qcnnclass, hard_thr = True, lines = False):
 
     plt.xticks(ticks=np.linspace(0,side-1,4).astype(int), labels= np.round(x[np.linspace(side-1,0,4).astype(int)],2))
     plt.yticks(ticks=np.linspace(0,side-1,4).astype(int), labels= np.round(y[np.linspace(side-1,0,4).astype(int)],2))
-    plt.show()
     
+    if len(deltaeline)>0:
+        plt.plot([side/2]*int(side/2) + (side/2) * deltaeline, '--', color ='white')
+    else:
+        getlines(ferropara, [0,.5], side, 'yellow', res = 100)
+    plt.show()

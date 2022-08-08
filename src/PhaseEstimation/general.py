@@ -58,6 +58,8 @@ def geteigvals(qml_H, states):
     
     return [eigvals[k] for k in states]
 
+
+
 def get_H_eigval_eigvec(qml_H, en_lvl):
     """
     Function for getting the energy value and state of an Ising Hamiltonian
@@ -224,3 +226,66 @@ def find_kink(f,x):
     it = np.argmax([abs(dfdx[i]-dfdx[i-1]) for i in range(1,len(x)-1)])
     
     return it+1, x[it+1]
+
+def findC(*vqes, width, info = False, plot = False):
+    def find_cross(vqe1, vqe2, idxs):
+        delta_e1 = (vqe1.vqe_e1[idxs] - vqe1.vqe_e0[idxs])*vqe1.Hs.N 
+        delta_e2 = (vqe2.vqe_e1[idxs] - vqe2.vqe_e0[idxs])*vqe2.Hs.N 
+        
+        dist = delta_e1 - delta_e2
+        
+        signchanges = (np.diff(np.sign(dist)) != 0)*1
+        
+        return np.where(signchanges == 1)[0]
+        
+    n_states = [vqe.Hs.n_states for vqe in vqes]
+    
+    if len(np.unique(n_states)) > 1:
+        print('Invalid VQEs, different sides not supported')
+    n_states = n_states[0]
+    side     = int(np.sqrt(n_states))
+           
+    if info:
+        print('Number of VQEs: {0}'.format(len(vqes)) )
+        print('Spins of VQEs: ', [vqe.Hs.N for vqe in vqes] )
+        print('Side of VQEs:  ', side)
+        
+    j2j1 = np.unique(vqes[0].Hs.model_params[:,2])
+        
+    getrange = lambda center, width: [center-width/8, center + width/2]
+    center = 0
+    centers = []
+    
+    for i, L in enumerate(j2j1):
+        if L > -.5:
+            idxs = np.arange(n_states)[vqes[0].Hs.model_params[:,2] == L]
+
+            crosses = []
+            for k, vqe1 in enumerate(vqes):
+                for vqe2 in vqes[k+1:]:
+                    vqepaircrosses = find_cross(vqe1, vqe2, idxs) 
+                    for vqepaircross in vqepaircrosses:
+                        crosses.append(vqepaircross)
+
+            crosses = np.array(crosses)
+            interval = getrange(center, width)
+
+            cross_center = 2*np.mean(crosses[np.logical_and(2*crosses/side > interval[0], 2*crosses/side <  interval[1] )])/side
+            center = cross_center
+            centers.append(center)
+            
+            if i%10 == 0:
+                if plot:
+                    for vqe in vqes:
+                        delta_es = (vqe.vqe_e1[idxs] - vqe.vqe_e0[idxs])*vqe.Hs.N
+                        plt.plot(np.linspace(0,2,side), delta_es, label = vqe.Hs.N)
+
+                        for cross in crosses:
+                            plt.axvline(x=2*cross/side, alpha = .1)
+
+                    plt.text(1.3, 20, r'$J_2/\,J_1=$'+str(np.round(L,2)))
+                    plt.axvline(x=center, color = 'red')
+                    plt.legend()
+                    plt.show()
+            
+    return np.array(centers)
