@@ -31,14 +31,12 @@ def show_VQE_isingchain(vqeclass, excited = False):
     if not excited:
         true_e = vqeclass.true_e0
         vqe_e  = vqeclass.vqe_e0
-        MSE = vqeclass.MSE0
         vqe_params = vqeclass.vqe_params0
         title = "Ground States of Ising Hamiltonian ({0}-spins), J = {1}"
     else:
         true_e = vqeclass.true_e1
         true_gs_e = vqeclass.true_e0
         vqe_e  = vqeclass.vqe_e1 
-        MSE = vqeclass.MSE1
         vqe_params = vqeclass.vqe_params1
         title = "Excited States of Ising Hamiltonian ({0}-spins), J = {1}"
         
@@ -51,8 +49,8 @@ def show_VQE_isingchain(vqeclass, excited = False):
     j_q_vqe_state = jax.jit(q_vqe_state)
     
     lams = np.linspace(0, 2*vqeclass.Hs.J, vqeclass.n_states)
-    tot_plots = 2 if len(MSE)==0 else 3
-    fig, ax = plt.subplots(tot_plots, 1, figsize=(12, 18.6))
+    tot_plots = 2
+    fig, ax = plt.subplots(tot_plots, 1, figsize=(12, 6*tot_plots))
 
     ax[0].plot(lams, true_e, "--", label="True", color="red", lw=3)
     if excited:
@@ -67,33 +65,20 @@ def show_VQE_isingchain(vqeclass, excited = False):
     ax[0].set_xlabel(r"$\lambda$")
     ax[0].set_ylabel(r"$E(\lambda)$")
     ax[0].legend()
-
-    if len(MSE)!=0:
-        ax[1].plot(
-            np.arange(len(MSE)) * 100, MSE, ".", color="orange", ms=7
-        )
-        ax[1].plot(
-            np.arange(len(MSE)) * 100, MSE, color="orange", alpha=0.4
-        )
-        ax[1].set_title("Convergence of VQE")
-        ax[1].set_xlabel("Epoch")
-        ax[1].set_ylabel("MSE")
-        ax[1].grid(True)
-        ax[1].axhline(y=0, color="r", linestyle="--")
-
+    
     accuracy = np.abs((true_e - vqe_e) / true_e)
-    ax[tot_plots-1].fill_between(
+    ax[1].fill_between(
         lams, 0.01, max(np.max(accuracy), 0.01), color="r", alpha=0.3
     )
-    ax[tot_plots-1].fill_between(
+    ax[1].fill_between(
         lams, 0.01, min(np.min(accuracy), 0), color="green", alpha=0.3
     )
-    ax[tot_plots-1].axhline(y=0.01, color="r", linestyle="--")
-    ax[tot_plots-1].scatter(lams, accuracy)
-    ax[tot_plots-1].grid(True)
-    ax[tot_plots-1].set_title("Accuracy of VQE".format(vqeclass.N, vqeclass.Hs.J))
-    ax[tot_plots-1].set_xlabel(r"$\lambda$")
-    ax[tot_plots-1].set_ylabel(r"$|(E_{vqe} - E_{true})/E_{true}|$")
+    ax[1].axhline(y=0.01, color="r", linestyle="--")
+    ax[1].scatter(lams, accuracy)
+    ax[1].grid(True)
+    ax[1].set_title("Accuracy of VQE".format(vqeclass.N, vqeclass.Hs.J))
+    ax[1].set_xlabel(r"$\lambda$")
+    ax[1].set_ylabel(r"$|(E_{vqe} - E_{true})/E_{true}|$")
 
     plt.tight_layout()
     
@@ -172,7 +157,7 @@ def show_VQE_nnisingchain(vqeclass):
 
     plt.tight_layout()
 
-def show_VQE_annni(vqeclass, log_heatmap = False, excited = False):
+def show_VQE_annni(vqeclass, log_heatmap = False, excited = False, plot3d = True):
     """
     Shows results of a trained VQE run:
     > VQE enegies plot
@@ -194,33 +179,27 @@ def show_VQE_annni(vqeclass, log_heatmap = False, excited = False):
         #states = vqeclass.states
         trues = np.reshape(vqeclass.true_e0,(side, side) )
         preds = np.reshape(vqeclass.vqe_e0,(side, side) )
-        MSE = vqeclass.MSE0
         title = "Ground States of Ising Hamiltonian ({0}-spins), J = {1}"
     else:
         #states = vqeclass.states1
         trues = np.reshape(vqeclass.true_e1,(side, side) )
         preds = np.reshape(vqeclass.vqe_e1,(side, side) )
         trues_gs = np.reshape(vqeclass.true_e0,(side, side) )
-        MSE = vqeclass.MSE1
         title = "Excited States of Ising Hamiltonian ({0}-spins), J = {1}"
 
     x = np.linspace(1, 0, side)
     y = np.linspace(0, 2, side)
+    
+    if plot3d:
+        if excited:
+            fig = go.Figure(data=[go.Surface(opacity=.2, colorscale='Reds', z=trues, x=x, y=y),
+                      go.Surface(opacity=1, colorscale='Blues',z=preds, x=x, y=y), go.Surface(opacity=.6, colorscale='plasma',z=trues_gs, x=x, y=y)])
+        else:
+            fig = go.Figure(data=[go.Surface(opacity=.2, colorscale='Reds', z=trues, x=x, y=y),
+                      go.Surface(opacity=1, colorscale='Blues',z=preds, x=x, y=y)])
 
-    if excited:
-        fig = go.Figure(data=[go.Surface(opacity=.2, colorscale='Reds', z=trues, x=x, y=y),
-                  go.Surface(opacity=1, colorscale='Blues',z=preds, x=x, y=y), go.Surface(opacity=.6, colorscale='plasma',z=trues_gs, x=x, y=y)])
-    else:
-        fig = go.Figure(data=[go.Surface(opacity=.2, colorscale='Reds', z=trues, x=x, y=y),
-                  go.Surface(opacity=1, colorscale='Blues',z=preds, x=x, y=y)])
-        
-    fig.update_layout(height=500)
-    fig.show()
-
-    plt.figure(figsize=(15,3))
-    plt.title('Convergence of VQE states')
-    plt.plot(np.arange(len(MSE)+1)[1:]*100, MSE)
-    plt.show()
+        fig.update_layout(height=500)
+        fig.show()
 
     accuracy = np.rot90( np.abs(preds-trues)/np.abs(trues) )
 
@@ -635,7 +614,7 @@ def show_QCNN_classification2D(qcnnclass, inject = False):
 
     plt.show()
     
-def show_QCNN_classificationANNNI(qcnnclass, hard_thr = True, lines = False):
+def show_QCNN_classificationANNNI(qcnnclass, hard_thr = True, lines = False, deltaeline = []):
     circuit = qcnnclass.vqe_qcnn_circuit
     side = int(np.sqrt(qcnnclass.n_states))
     
@@ -706,7 +685,6 @@ def show_QCNN_classificationANNNI(qcnnclass, hard_thr = True, lines = False):
     def ferropara(x):
         return 1 - 2*x
                     
-    getlines(ferropara, [0,.5], side, 'yellow', res = 100)
     getlines(B2SA, [.5,1], side, 'yellow', res = 100)
     
     x = np.linspace(1, 0, side)
@@ -714,5 +692,9 @@ def show_QCNN_classificationANNNI(qcnnclass, hard_thr = True, lines = False):
 
     plt.xticks(ticks=np.linspace(0,side-1,4).astype(int), labels= np.round(x[np.linspace(side-1,0,4).astype(int)],2))
     plt.yticks(ticks=np.linspace(0,side-1,4).astype(int), labels= np.round(y[np.linspace(side-1,0,4).astype(int)],2))
-    plt.show()
     
+    if len(deltaeline)>0:
+        plt.plot([side/2]*int(side/2) + (side/2) * deltaeline, '--', color ='white')
+    else:
+        getlines(ferropara, [0,.5], side, 'yellow', res = 100)
+    plt.show()
