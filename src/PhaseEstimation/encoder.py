@@ -25,45 +25,6 @@ import PhaseEstimation.circuits as circuits
 
 ##############
 
-def encoder_entanglement(wires, wires_trash, shift = 0):
-    """
-    Applies CX between a wire and a trash wire for each
-    wire/trashwire
-
-    Parameters
-    ----------
-    N : int
-        Number of qubits
-    wires : np.ndarray
-        Array of the indexes of non-trash qubits
-    wires_trash : np.ndarray
-        Array of the indexes of trash qubits (np.1dsetdiff(np.arange(N),wires))
-    """
-    # Connection between trash wires
-    trash_uniques = []
-    for wire in wires_trash:
-        wire_target = wire + 1 + shift
-        
-        if wire_target > wires_trash[-1]:
-            wire_target = wires_trash[0] + wire_target - wires_trash[-1] -1
-        if wire_target == wire:
-            wire_target += 1
-        if wire_target > wires_trash[-1]:
-            wire_target = wires_trash[0] + wire_target - wires_trash[-1] -1
-            
-        if not [wire_target, wire] in trash_uniques:
-            qml.CNOT(wires=[int(wire), int(wire_target)])
-            trash_uniques.append([wire,wire_target])
-
-    # Connections wires -> trash_wires
-    for idx, wire in enumerate(wires):
-        trash_idx = idx + shift
-        
-        while trash_idx > len(wires_trash) - 1:
-            trash_idx = trash_idx - len(wires_trash)
-        
-        qml.CNOT(wires=[int(wire), int(wires_trash[trash_idx])])      
-
 def encoder_circuit(N, params):
     """
     Building function for the circuit:
@@ -325,7 +286,7 @@ def load(filename_vqe, filename_enc):
 
     return loaded_enc
 
-def enc_classification_ANNNI(vqeclass, lr, epochs, inject = False):
+def enc_classification_ANNNI(vqeclass, lr, epochs):
     """
     Train 3 encoder on the corners: 
     > K = 0, L = 2 (Paramagnetic)
@@ -356,38 +317,17 @@ def enc_classification_ANNNI(vqeclass, lr, epochs, inject = False):
     phase3 = int(vqeclass.n_states - side)
     
     encclass  = encoder(vqeclass, encoder_circuit)
-    if not inject:
-        X = jnp.array(encclass.vqe_params0)
+    
+    X = jnp.array(encclass.vqe_params0)
 
-        @qml.qnode(encclass.device, interface="jax")
-        def encoder_circuit_class(vqe_params, params):
-            encclass.vqe_enc_circuit(vqe_params, params)
+    @qml.qnode(encclass.device, interface="jax")
+    def encoder_circuit_class(vqe_params, params):
+        encclass.vqe_enc_circuit(vqe_params, params)
 
-            return [qml.expval(qml.PauliZ(int(k))) for k in encclass.wires_trash]
-    else:
-        try:
-            qcnnclass.psi
-        except:
-            psi = []
-            for qml_h in encclass.vqe.Hs.qml_H:
-                # Compute eigenvalues and eigenvectors
-                eigval, eigvec = jnp.linalg.eigh(h)
-                # Get the eigenstate to the lowest eigenvalue
-                gstate = eigvec[:,jnp.argmin(eigval)]
-
-                psi.append(gstate)
-            psi = jnp.array(psi)
-            encclass.psi = psi
-            
-        X = jnp.array(encclass.psi)
-
-        @qml.qnode(encclass.device, interface="jax")
-        def encoder_circuit_class(psi, params):
-            encclass.psi_enc_circuit(psi, params)
-
-            return [qml.expval(qml.PauliZ(int(k))) for k in encclass.wires_trash]
-
+        return [qml.expval(qml.PauliZ(int(k))) for k in encclass.wires_trash]
+    
     encoding_scores = []
+    
     for phase in [phase1,phase2,phase3]:
         encclass  = encoder(vqeclass, encoder_circuit)
         encclass.train(lr, epochs, np.array([phase]), circuit = False, plot = False, inject = inject)
@@ -396,17 +336,29 @@ def enc_classification_ANNNI(vqeclass, lr, epochs, inject = False):
         exps = np.rot90( np.reshape(exps, (side,side)) )
         
         encoding_scores.append(exps)
+        
+    def getlines(func, xrange, side, color, res = 100):
+        xs = np.linspace(xrange[0], xrange[1], res)
+        ys = func(xs)
+        plt.plot(side*xs -.5, side - ys*side/2 -.5, color = color, alpha=.8)
+
+    def B2SA(x):
+        return 1.05 * np.sqrt((x-.5)*(x-.1))
+
+    def ferropara(x):
+        return 1 - 2*x
+        
+    getlines(B2SA, [.5,1], side, 'white', res = 100)
+    getlines(ferropara, [0,.5], side, 'white', res = 100)
 
     phases = mpl.colors.ListedColormap(["navy", "crimson", "limegreen", "limegreen"])
     norm = mpl.colors.BoundaryNorm(np.arange(0,4), phases.N) 
     plt.imshow(np.argmin(np.array(encoding_scores), axis = (0)), cmap = phases, norm = norm)
 
-    plt.title('Classification of ANNNI states')
-    plt.ylabel('L')
-    plt.xlabel('K')
+    plt.ylabel(r'$h$', fontsize=24)
+    plt.xlabel(r'$\kappa$', fontsize=24)
 
-    plt.yticks(np.linspace(0,side-1,5), labels = np.round(np.linspace(2,0,5),2) )
-
-    plt.xticks(np.linspace(0,side-1,5), labels = np.round(np.linspace(0,-1,5),2) )
+    plt.xticks(ticks=np.linspace(0,side-1,5).astype(int), labels= [np.round(k*1/4,2) for k in range(0,5)], fontsize=18)
+    plt.yticks(ticks=np.linspace(0,side-1,5).astype(int), labels= [np.round(k*2/4,2) for k in range(4,-1,-1)], fontsize=18)
         
     return np.argmin(np.array(encoding_scores), axis = (0))

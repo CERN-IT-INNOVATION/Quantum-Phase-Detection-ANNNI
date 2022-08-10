@@ -58,8 +58,6 @@ def geteigvals(qml_H, states):
     
     return [eigvals[k] for k in states]
 
-
-
 def get_H_eigval_eigvec(qml_H, en_lvl):
     """
     Function for getting the energy value and state of an Ising Hamiltonian
@@ -199,35 +197,24 @@ def get_neighbours(vqeclass, idx):
         
     return neighbours
 
-def find_kink(f,x):
-    '''
-    Find kink (non differentiable point) of a function,
-    used to find TODO
-    It is assumed the existence of ONLY ONE non differentiable point
+def findC(*vqes, width, info = False, plot = False):
+    """
+    Find the critical line in L for K in [0,.5]
     
-    
+    By fixing K (namely J1 and J2) and computing the energy gaps between the
+    first excited state and ground state for L in [0,2] and for various Ns
+    the critical lines of each N-system will cross at a point near the phase transition.
+    This leads to accurate results for L in [0,.5]
     
     Parameters
     ----------
-    f : function
-        Function non differentiable at a place y
-    x : np.ndarray
-        x-values of the function
-        
-    Returns
-    -------
-    int
-        index of the x array of the non differentiable point
-    float
-        non-differentiable x-value of f
-    '''
+    *vqes : *list
+        *list of trained (ground states and excited) vqes
+    width : float
+        width for the range of the crossing finding algorithm
+    """
     
-    dfdx = [(f[i+1]-f[i])/(x[i+1]-x[i]) for i in range(len(x)-1)] 
-    it = np.argmax([abs(dfdx[i]-dfdx[i-1]) for i in range(1,len(x)-1)])
     
-    return it+1, x[it+1]
-
-def findC(*vqes, width, info = False, plot = False):
     def find_cross(vqe1, vqe2, idxs):
         delta_e1 = (vqe1.vqe_e1[idxs] - vqe1.vqe_e0[idxs])*vqe1.Hs.N 
         delta_e2 = (vqe2.vqe_e1[idxs] - vqe2.vqe_e0[idxs])*vqe2.Hs.N 
@@ -289,3 +276,9 @@ def findC(*vqes, width, info = False, plot = False):
                     plt.show()
             
     return np.array(centers)
+
+def antiferro(x):
+    return 1.05 * np.sqrt((x-.5)*(x-.1))
+
+def paraferro(x):
+    return 1 - 2*x
