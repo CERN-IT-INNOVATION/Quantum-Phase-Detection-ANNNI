@@ -58,8 +58,6 @@ def geteigvals(qml_H, states):
     
     return [eigvals[k] for k in states]
 
-
-
 def get_H_eigval_eigvec(qml_H, en_lvl):
     """
     Function for getting the energy value and state of an Ising Hamiltonian
@@ -278,3 +276,9 @@ def findC(*vqes, width, info = False, plot = False):
                     plt.show()
             
     return np.array(centers)
+
+def antiferro(x):
+    return 1.05 * np.sqrt((x-.5)*(x-.1))
+
+def paraferro(x):
+    return 1 - 2*x

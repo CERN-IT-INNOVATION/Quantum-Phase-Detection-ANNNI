@@ -316,7 +316,7 @@ class vqe:
                 self.train_site_excited(lr, n_epochs, int(site), beta)
 
             progress.update(1)
-
+            
     def save(self, filename):
         """
         Save main parameters of the VQE class to a local file.

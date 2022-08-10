@@ -56,20 +56,21 @@ def qcnn_circuit(params, N, n_outputs):
     # Index of the parameter vector
     index = 0
     
-    index = circuits.wall_gate(active_wires, qml.RY, params, index)
-    index = circuits.wall_gate(active_wires, qml.RX, params, index)
     # Iterate Convolution+Pooling until we only have a single wires
     while len(active_wires) > n_outputs:
-        qml.Barrier()
         index = circuits.convolution(active_wires, params, index)
+        index = circuits.wall_gate(active_wires, qml.RZ, params, index, samerot = True)
+        index = circuits.convolution(active_wires, params, index)
+        qml.Barrier()
+        index = circuits.wall_gate(active_wires, qml.RZ, params, index, samerot = True)
         qml.Barrier()
         index, active_wires = circuits.pooling(active_wires, qml.RY, params, index)
         qml.Barrier()
+        
     if n_outputs > 1:
+        #index = circuits.wall_gate(active_wires, qml.RY, params, index)
         for wire1, wire2 in zip(active_wires[0::2],active_wires[1::2]):
-            qml.CNOT(wires = [int(wire1),int(wire2)])
-    index = circuits.wall_gate(active_wires, qml.RY, params, index)
-    index = circuits.wall_gate(active_wires, qml.RX, params, index)
+            qml.CY(wires = [int(wire1),int(wire2)])
     index = circuits.wall_gate(active_wires, qml.RY, params, index)
 
     # Return the number of parameters
@@ -196,6 +197,7 @@ class qcnn:
             
             X_train, Y_train = X[train_index], Y[train_index]
             X_test, Y_test   = X[test_index], Y[test_index]
+
             
         if circuit:
             # Display the circuit

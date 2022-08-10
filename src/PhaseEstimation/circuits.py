@@ -198,6 +198,9 @@ def pooling(active_wires, qmlrot_func, params, index = 0):
     np.ndarray
         Updated array of active wires (not measured)
     """
+    isodd = True
+    if len(active_wires)%2 == 0:
+        isodd = False
     for wire_meas, wire_next in zip(active_wires[0::2], active_wires[1::2]):
         m_0 = qml.measure(int(wire_meas))
         qml.cond(m_0 == 0, qmlrot_func)(params[index], wires=int(wire_next))
@@ -209,7 +212,7 @@ def pooling(active_wires, qmlrot_func, params, index = 0):
 
     # ---- > If the number of wires is odd, the last wires is not pooled
     #        so we apply a gate
-    if len(active_wires) % 2 != 0:
+    if isodd:
         qmlrot_func(params[index], wires = int(active_wires[-1]) )
         index = index + 1
      
@@ -268,7 +271,7 @@ def convolution(active_wires, params, index = 0):
         for wire1, wire2 in zip(active_wires[0::2],active_wires[1::2]):
             qml.CNOT(wires = [int(wire1),int(wire2)])
         
-        index = wall_gate(active_wires, qml.RY, params, index)
+        index = wall_gate(active_wires, qml.RX, params, index)
         
     return index
 
@@ -299,7 +302,7 @@ def encoder_block(wires, wires_trash, shift = 0):
             wire_target = wires_trash[0] + wire_target - wires_trash[-1] -1
             
         if not [wire_target, wire] in trash_uniques:
-            qml.CNOT(wires=[int(wire), int(wire_target)])
+            qml.CZ(wires=[int(wire), int(wire_target)])
             trash_uniques.append([wire,wire_target])
 
     # Connections wires -> trash_wires
@@ -333,11 +336,11 @@ def encoder_circuit(wires, wires_trash, active_wires, params, index = 0):
     int
         Updated index value
     """
-    for shift in range(len(wires_trash)):
-        index = wall_gate(active_wires, qml.RY, params, index = index)
+    index = wall_gate(active_wires, qml.RY, params, index = index)
+    for shift in range(3):
         encoder_block(wires, wires_trash, shift)
         qml.Barrier()
-    index = wall_gate(active_wires, qml.RY, params, index = index)
+        index = wall_gate(active_wires, qml.RZ, params, index = index)
 
     return index
 

@@ -10,6 +10,15 @@ from matplotlib.colors import LinearSegmentedColormap, LogNorm, Normalize
 import plotly.graph_objects as go
 import pandas as pd
 
+import sys
+sys.path.insert(0, '../../')
+import PhaseEstimation.general as qmlgen
+
+def getlines(func, xrange, side, color, res = 100):
+    xs = np.linspace(xrange[0], xrange[1], res)
+    ys = func(xs)
+    plt.plot(side*xs -.5, side - ys*side/2 -.5, color = color, alpha=.8)
+
 def show_VQE_isingchain(vqeclass, excited = False):
     """
     Shows results of a trained VQE run:
@@ -488,42 +497,20 @@ def show_compression_isingchain(encclass, inject = False):
     plt.legend()
     plt.grid(True)
     
-def show_compression_ANNNI(encclass, inject = False, plot3d = False):
+def show_compression_ANNNI(encclass, trainingpoint = False, label = False, plot3d = False):
     '''
     Shows result of compression of the Anomaly Detector
     '''
+    
     side = int(np.sqrt(encclass.n_states))
     
-    if not inject:
-        X = jnp.array(encclass.vqe_params)
+    X = jnp.array(encclass.vqe_params0)
 
-        @qml.qnode(encclass.device, interface="jax")
-        def encoder_circuit(vqe_params, params):
-            encclass.vqe_enc_circuit(vqe_params, params)
+    @qml.qnode(encclass.device, interface="jax")
+    def encoder_circuit(vqe_params, params):
+        encclass.vqe_enc_circuit(vqe_params, params)
 
-            return [qml.expval(qml.PauliZ(int(k))) for k in encclass.wires_trash]
-    else:
-        try:
-            qcnnclass.psi
-        except:
-            psi = []
-            for h in encclass.vqe.Hs.mat_Hs:
-                # Compute eigenvalues and eigenvectors
-                eigval, eigvec = jnp.linalg.eigh(h)
-                # Get the eigenstate to the lowest eigenvalue
-                gstate = eigvec[:,jnp.argmin(eigval)]
-
-                psi.append(gstate)
-            psi = jnp.array(psi)
-            encclass.psi = psi
-            
-        X = jnp.array(encclass.psi)
-
-        @qml.qnode(encclass.device, interface="jax")
-        def encoder_circuit(psi, params):
-            encclass.psi_enc_circuit(psi, params)
-
-            return [qml.expval(qml.PauliZ(int(k))) for k in encclass.wires_trash]
+        return [qml.expval(qml.PauliZ(int(k))) for k in encclass.wires_trash]
 
     v_encoder_circuit = jax.vmap(lambda x: encoder_circuit(x, encclass.params))
 
@@ -539,7 +526,39 @@ def show_compression_ANNNI(encclass, inject = False, plot3d = False):
         fig.update_layout(height=500)
         fig.show()
     else:
+        plt.figure(figsize=(8, 6), dpi=80)
         plt.imshow(exps)
+        
+        plt.ylabel(r'$h$', fontsize=24)
+        plt.xlabel(r'$\kappa$', fontsize=24)
+
+        x = np.linspace(1, 0, side)
+        y = np.linspace(0, 2, side)
+
+        plt.xticks(ticks=np.linspace(0,side-1,5).astype(int), labels= [np.round(k*1/4,2) for k in range(0,5)], fontsize=18)
+        plt.yticks(ticks=np.linspace(0,side-1,5).astype(int), labels= [np.round(k*2/4,2) for k in range(4,-1,-1)], fontsize=18)
+        
+        getlines(qmlgen.antiferro, [.5,1], side, 'white', res = 100)
+        getlines(qmlgen.paraferro, [0,.5], side, 'white', res = 100)
+        
+        if type(trainingpoint) == int:
+            train_x = trainingpoint//side
+            train_y = side - trainingpoint%side
+            if train_x == 0:
+                train_x += 1.5
+            if train_y == side:
+                train_y -= 2
+            
+            plt.scatter([train_x],[train_y], marker = '+', s = 300, color='orangered', label = 'Training point')
+            plt.ylim(side-1,0)
+            plt.xlim(0,side-1)
+            
+            leg = plt.legend(bbox_to_anchor=(1, 1), loc='upper right', fontsize=16, facecolor='white', markerscale=.8, framealpha=0.9, title = r'$N = {0}$'.format(str(encclass.N)), title_fontsize=16)
+            leg.get_frame().set_boxstyle('Square')
+            
+        if label:
+            plt.figtext(.23, .79, '('+label+')', color = 'white', fontsize=20)
+        
         plt.colorbar()
         
 def show_QCNN_classification2D(qcnnclass, inject = False):
@@ -611,7 +630,25 @@ def show_QCNN_classification2D(qcnnclass, inject = False):
 
     plt.show()
     
-def show_QCNN_classificationANNNI(qcnnclass, hard_thr = True, lines = False, deltaeline = [], train_index = [], label = False):
+W = 5.8    # Figure width in inches, approximately A4-width - 2*1.25in margin
+plt.rcParams.update({
+    'figure.figsize': (W, W/(4/3)),     # 4:3 aspect ratio
+    'font.size' : 11,                   # Set font size to 11pt
+    'axes.labelsize': 11,               # -> axis labels
+    'legend.fontsize': 11,              # -> legends
+    'font.family': 'Helvetica',
+    'text.usetex': True,
+    'text.latex.preamble': (            # LaTeX preamble
+        r'\usepackage{lmodern}'
+        # ... more packages if needed
+    )
+})
+    
+
+def show_QCNN_classificationANNNI(qcnnclass, hard_thr = True, lines = False, deltaeline = [], train_index = [], label = False, info = False):
+
+    plt.figure(figsize=(8, 6), dpi=80)
+
     circuit = qcnnclass.vqe_qcnn_circuit
     side = int(np.sqrt(qcnnclass.n_states))
     
@@ -661,47 +698,65 @@ def show_QCNN_classificationANNNI(qcnnclass, hard_thr = True, lines = False, del
         rgb_probs = np.ndarray(shape=(side*side, 3), dtype=float)
         
         for i, pred in enumerate(predictions):
-            rgb_probs[i] = [pred[1]*255,pred[2]*255,pred[3]*255]
-        rgb_probs = np.rot90(np.reshape(rgb_probs, (side,side,3)) )/255
+            rgb_probs[i] = [pred[2],(pred[3]+pred[2]),2*pred[1]/3]
+            
+        rgb_probs = np.rot90(np.reshape(rgb_probs, (side,side,3))/np.max(rgb_probs) )
         
-        plt.imshow( rgb_probs )
+        plt.imshow( rgb_probs, alpha=.9)
         
-    plt.ylabel(r'$h\,/\,J_1$')
-    plt.xlabel(r'$K$')
+    plt.ylabel(r'$h$', fontsize=24)
+    plt.xlabel(r'$\kappa$', fontsize=24)
     
     def getlines(func, xrange, side, color, res = 100):
         xs = np.linspace(xrange[0], xrange[1], res)
         ys = func(xs)
-        
-        plt.plot(side*xs -.5, side - ys*side/2 -.5, color = color)
+        plt.plot(side*xs -.5, side - ys*side/2 -.5, color = color, alpha=1)
         
     def B2SA(x):
         return 1.05 * np.sqrt((x-.5)*(x-.1))
     
     def ferropara(x):
         return 1 - 2*x
-                    
-    getlines(B2SA, [.5,1], side, 'white', res = 100)
-    getlines(ferropara, [0,.5], side, 'white', res = 100)
     
     x = np.linspace(1, 0, side)
     y = np.linspace(0, 2, side)
 
-    plt.xticks(ticks=np.linspace(0,side-1,5).astype(int), labels= [np.round(k*1/4,2) for k in range(0,5)] )
-    plt.yticks(ticks=np.linspace(0,side-1,5).astype(int), labels= [np.round(k*2/4,2) for k in range(4,-1,-1)])
-    
-    if len(deltaeline)>0:
-        plt.plot([side/2]*int(side/2) + (side/2) * deltaeline, '--', color ='black', lw= 2.5)
+    plt.xticks(ticks=np.linspace(0,side-1,5).astype(int), labels= [np.round(k*1/4,2) for k in range(0,5)], fontsize=18)
+    plt.yticks(ticks=np.linspace(0,side-1,5).astype(int), labels= [np.round(k*2/4,2) for k in range(4,-1,-1)], fontsize=18)
         
     if len(train_index)>0:
         x_star, y_star = [], []
         for idx in train_index:
-            x_star.append(idx//side)
-            y_star.append(side - idx%side - .5)
-        plt.scatter(x_star, y_star, marker = 'o', color = 'yellow', s = 205, alpha =1)
+            x_star.append(idx//side - 1)
+            y_star.append(side - idx%side)
+            if x_star[-1] == -1 :
+                x_star[-1] = x_star[-1] + 1.5
+            if y_star[-1] == side:
+                y_star[-1] = y_star[-1] - 1.5 
+                
+        plt.scatter(x_star, y_star, marker = 'o', color = 'red', s = 60, alpha =1, label='training set '+r'$\mathcal{S}$')
         plt.ylim(side-1,0)
         plt.xlim(0,side-1)
+
+    if len(deltaeline)>0:
+        plt.plot([side/2]*int(side/2) + (side/2) * deltaeline, color ='fuchsia', lw= 2.5, alpha=.9, label='VQE RG')
+
+    getlines(B2SA, [.5,1], side, 'white', res = 100)
+    getlines(ferropara, [0,.5], side, 'white', res = 100)
     
     if label:
-        plt.figtext(.33, .8, '('+label+')', color = 'white', fontsize=14)
+        plt.figtext(.28, .79, '('+label+')', color = 'black', fontsize=20)
+
+    if info:
+        plt.text(side*.5, side*.4, 'para.', color = 'black', fontsize = 20, ha='center', va='center')
+        plt.text(side*.18, side*.88, 'ferro.', color = 'white', fontsize = 20, ha='center', va='center')
+        plt.text(side*.82, side*.88, 'anti.', color = 'black', fontsize = 20, ha='center', va='center')
+
+        leg = plt.legend(bbox_to_anchor=(1, 1), loc='upper right', fontsize=16, facecolor='white', markerscale=1, framealpha=0.9, title = r'$N = {0}$'.format(str(qcnnclass.N)), title_fontsize=16)
+        leg.get_frame().set_boxstyle('Square')
+
+        # change the line width for the legend
+        for line in leg.get_lines():
+            line.set_linewidth(4.0)
+        
         
