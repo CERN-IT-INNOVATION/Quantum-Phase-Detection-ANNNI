@@ -54,6 +54,37 @@ def circuit_ising(N, params):
     
     return index
 
+
+def circuit_ising2(N, params):
+    """
+    Full VQE circuit
+
+    Parameters
+    ----------
+    N : int
+        Number of qubits
+    params: np.ndarray
+        Array of parameters/rotation for the circuit
+
+    Returns
+    -------
+    int
+        Total number of parameters needed to build this circuit
+    """
+    # No wire will be measured until the end, the array of active
+    # wire will correspont to np.arange(N) throughout the whole circuit
+    active_wires = np.arange(N)
+    index = 0
+    qml.Barrier()
+    for _ in range(9):
+        index = circuits.circuit_ID9(active_wires, params, index)
+        qml.Barrier()
+        
+    index = circuits.wall_gate(active_wires, qml.RX, params, index)
+    index = circuits.wall_gate(active_wires, qml.RY, params, index)
+    
+    return index
+
 class vqe:
     def __init__(self, Hs, circuit):
         """

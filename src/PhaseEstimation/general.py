@@ -281,4 +281,20 @@ def antiferro(x):
     return 1.05 * np.sqrt((x-.5)*(x-.1))
 
 def paraferro(x):
-    return 1 - 2*x
+    return ((1-x)/x)*(1 - np.sqrt( (1-3*x+4*x*x)/(1-x) ) )
+
+def b1(x):
+    return 1.05 * (x - .5)
+
+def peshel_emery(x):
+    y =  (1/(4*x)) - x
+    
+    y[y>2] = 2
+    return y
+
+def simple_to_idx(simple, side):
+    if simple <= 2*side - 1:
+        if simple <= side:
+            return simple
+        else:
+            return side*(simple%side + 1) 

@@ -22,6 +22,7 @@ warnings.filterwarnings(
 import sys, os
 sys.path.insert(0, '../../')
 import PhaseEstimation.circuits as circuits
+import PhaseEstimation.general as qmlgen
 
 ##############
 
@@ -58,6 +59,8 @@ def qcnn_circuit(params, N, n_outputs):
     
     # Iterate Convolution+Pooling until we only have a single wires
     while len(active_wires) > n_outputs:
+        index = circuits.convolution(active_wires, params, index)
+        index = circuits.wall_gate(active_wires, qml.RZ, params, index, samerot = True)
         index = circuits.convolution(active_wires, params, index)
         index = circuits.wall_gate(active_wires, qml.RZ, params, index, samerot = True)
         index = circuits.convolution(active_wires, params, index)
@@ -283,7 +286,7 @@ class qcnn:
             plt.grid(True)
             plt.legend()
 
-    def save(filename):
+    def save(self, filename):
         """
         Saves QCNN parameters to file
 
@@ -324,3 +327,72 @@ def load(filename_vqe, filename_qcnn):
     loaded_qcnn.params = params
 
     return loaded_qcnn
+
+def get_trainset_gaussian(vqeclass, nS, sigma = 1):
+    side = int(np.sqrt(vqeclass.n_states))
+    if nS > 2*side - 1:
+        return
+    nS = nS // 2
+    mu = side // 2
+    
+    training_set = []
+    # Get Y training set:
+    while len(training_set) < nS:
+        sample = int(np.random.normal(mu, sigma))
+        if sample not in training_set:
+            if sample >= 0 and sample < side:
+                training_set.append(sample)
+    # Get X training set: 
+    while len(training_set) < 2*nS:
+        sample = int(np.random.normal(mu, sigma)) + side
+        if sample not in training_set:
+            if sample >= side and sample < 2*side:
+                training_set.append(sample)
+                
+    return np.array(training_set)
+
+def ANNNI_accuracy(qcnnclass, plot = False):
+    circuit = qcnnclass.vqe_qcnn_circuit
+    side = int(np.sqrt(qcnnclass.n_states))
+    
+    @qml.qnode(qcnnclass.device, interface="jax")
+    def qcnn_circuit_prob(params_vqe, params):
+        circuit(params_vqe, params)
+    
+        return [qml.probs(wires=int(k)) for k in qcnnclass.final_active_wires]
+    
+    vcircuit = jax.vmap(lambda v: qcnn_circuit_prob(v, qcnnclass.params), in_axes=(0))
+
+    predictions = np.array(np.argmax(vcircuit(qcnnclass.vqe_params), axis = 2))
+
+    labels       = []
+    for idx in range(side*side):
+        # compute coordinates and normalize for x in [0,1]
+        # and y in [0,2]
+        x = (idx//side)/side
+        y = 2*(idx%side)/side
+        
+        if x == 0:
+            if 1 <= y:
+                labels.append([1,1])
+            else:
+                labels.append([0,1])
+        elif x <= .5:
+            if (qmlgen.paraferro(x) <= y):
+                labels.append([1,1])
+            else:
+                labels.append([0,1])
+        else:
+            if (qmlgen.antiferro(x)) <= y:
+                labels.append([1,1])
+            else:
+                labels.append([1,0])
+
+    correct = (np.sum(np.array(labels) == predictions, axis = 1).astype(int) == 2)
+    accuracy = np.sum(correct)/(side*side)
+
+    if plot:
+        plt.imshow(np.rot90(np.reshape(correct, (side,side))), cmap = 'RdYlGn')
+        plt.show()
+        
+    return accuracy

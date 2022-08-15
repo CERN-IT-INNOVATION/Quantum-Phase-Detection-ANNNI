@@ -14,6 +14,13 @@ import sys
 sys.path.insert(0, '../../')
 import PhaseEstimation.general as qmlgen
 
+from matplotlib import rc
+rc('font',**{'family':'sans-serif','sans-serif':['Helvetica']})
+## for Palatino and other serif fonts use:
+rc('font',**{'family':'serif','serif':['Computer Modern Roman']})
+rc('text', usetex=True)
+
+
 def getlines(func, xrange, side, color, res = 100):
     xs = np.linspace(xrange[0], xrange[1], res)
     ys = func(xs)
@@ -557,9 +564,13 @@ def show_compression_ANNNI(encclass, trainingpoint = False, label = False, plot3
             leg.get_frame().set_boxstyle('Square')
             
         if label:
-            plt.figtext(.23, .79, '('+label+')', color = 'white', fontsize=20)
+            plt.figtext(.23, .79, '('+label+')', color = 'black', fontsize=20)
+        plt.text(side*.5, side*.4, 'para.', color = 'black', fontsize = 22, ha='center', va='center')
+        plt.text(side*.18, side*.88, 'ferro.', color = 'white', fontsize = 22, ha='center', va='center')
+        plt.text(side*.82, side*.88, 'anti.', color = 'black', fontsize = 22, ha='center', va='center')
         
-        plt.colorbar()
+        cbar = plt.colorbar()
+        cbar.ax.tick_params(labelsize=18)
         
 def show_QCNN_classification2D(qcnnclass, inject = False):
     """
@@ -630,22 +641,8 @@ def show_QCNN_classification2D(qcnnclass, inject = False):
 
     plt.show()
     
-W = 5.8    # Figure width in inches, approximately A4-width - 2*1.25in margin
-plt.rcParams.update({
-    'figure.figsize': (W, W/(4/3)),     # 4:3 aspect ratio
-    'font.size' : 11,                   # Set font size to 11pt
-    'axes.labelsize': 11,               # -> axis labels
-    'legend.fontsize': 11,              # -> legends
-    'font.family': 'Helvetica',
-    'text.usetex': True,
-    'text.latex.preamble': (            # LaTeX preamble
-        r'\usepackage{lmodern}'
-        # ... more packages if needed
-    )
-})
-    
-
-def show_QCNN_classificationANNNI(qcnnclass, hard_thr = True, lines = False, deltaeline = [], train_index = [], label = False, info = False):
+def show_QCNN_classificationANNNI(qcnnclass, hard_thr = True, lines = False, deltaeline = [],
+                                    train_index = [], label = False, info = False, morelines = False):
 
     plt.figure(figsize=(8, 6), dpi=80)
 
@@ -700,24 +697,13 @@ def show_QCNN_classificationANNNI(qcnnclass, hard_thr = True, lines = False, del
         for i, pred in enumerate(predictions):
             rgb_probs[i] = [pred[2],(pred[3]+pred[2]),2*pred[1]/3]
             
-        rgb_probs = np.rot90(np.reshape(rgb_probs, (side,side,3))/np.max(rgb_probs) )
+        rgb_probs = np.rot90(np.reshape(rgb_probs, (side,side,3))/1.5 )
         
         plt.imshow( rgb_probs, alpha=.9)
         
     plt.ylabel(r'$h$', fontsize=24)
     plt.xlabel(r'$\kappa$', fontsize=24)
-    
-    def getlines(func, xrange, side, color, res = 100):
-        xs = np.linspace(xrange[0], xrange[1], res)
-        ys = func(xs)
-        plt.plot(side*xs -.5, side - ys*side/2 -.5, color = color, alpha=1)
         
-    def B2SA(x):
-        return 1.05 * np.sqrt((x-.5)*(x-.1))
-    
-    def ferropara(x):
-        return 1 - 2*x
-    
     x = np.linspace(1, 0, side)
     y = np.linspace(0, 2, side)
 
@@ -741,9 +727,13 @@ def show_QCNN_classificationANNNI(qcnnclass, hard_thr = True, lines = False, del
     if len(deltaeline)>0:
         plt.plot([side/2]*int(side/2) + (side/2) * deltaeline, color ='fuchsia', lw= 2.5, alpha=.9, label='VQE RG')
 
-    getlines(B2SA, [.5,1], side, 'white', res = 100)
-    getlines(ferropara, [0,.5], side, 'white', res = 100)
-    
+    getlines(qmlgen.antiferro, [.5,1], side, 'white', res = 100)
+    getlines(qmlgen.paraferro, [0,.5], side, 'white', res = 100)
+    if morelines:
+        getlines(qmlgen.h1, [0,.5], side, 'red', res = 100)
+        getlines(qmlgen.peshel_emery, [0,.5], side, 'cyan', res = 100)
+        getlines(qmlgen.b1, [.5,1], side, 'blue', res = 100)
+        
     if label:
         plt.figtext(.28, .79, '('+label+')', color = 'black', fontsize=20)
 
