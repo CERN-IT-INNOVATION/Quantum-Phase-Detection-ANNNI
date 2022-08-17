@@ -2,9 +2,11 @@
 import pennylane as qml
 from pennylane import numpy as np
 
+from typing import List, Tuple
+from numbers import Number
 ##############
 
-def get_H(N, lam, J, ring = False):
+def get_H(N : int, lam : float, J : float, ring : bool = False) -> qml.ops.qubit.hamiltonian.Hamiltonian:
     """
     Set up Hamiltonian:
             H = -lam*Σsigma^i_z - J*Σsigma^i_x*sigma_x^{i+1}
@@ -40,7 +42,7 @@ def get_H(N, lam, J, ring = False):
 
     return H
 
-def build_Hs(N, J, n_states, ring = False):
+def build_Hs(N : int, J : float, n_states : int, ring : bool = False) -> Tuple[List[qml.ops.qubit.hamiltonian.Hamiltonian], List[int], List[int], List[Tuple[int, Number, Number]], int]:
     """
     Sets up np.ndarray of pennylane Hamiltonians with different instensity of magnetic field mu in np.linspace(0, 2*J, n_states)
     
@@ -58,11 +60,13 @@ def build_Hs(N, J, n_states, ring = False):
     np.array
         Array of pennylane Hamiltonians
     np.array
-        Array of labels for analytical solutionss
+        Array of labels for analytical solutions
     np.array
         Array for the recycle rule
     np.array
         Array for the states parameters
+    int
+        Number of states
     """
     # Array of free parameters (magnetic field)
     lams = np.linspace(0, 2*J, n_states)
@@ -81,5 +85,5 @@ def build_Hs(N, J, n_states, ring = False):
     # Array of indices for the order of states to train through VQE
     recycle_rule = np.arange(n_states)
     
-    return Hs, np.array(labels), np.array(recycle_rule), np.array(ising_params)
+    return Hs, np.array(labels), np.array(recycle_rule), np.array(ising_params), n_states
 

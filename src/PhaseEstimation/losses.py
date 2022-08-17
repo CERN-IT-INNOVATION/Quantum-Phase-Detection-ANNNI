@@ -59,7 +59,7 @@ def vqe_fidelties_neighbouring(states):
 def hinge(X, Y, params, q_circuit):
     """
     LOSS: (Experimental) Compute Hinge loss for a binary classification task
-    N.B: MAX is not applied because output is a probabiliti [0,1] that will be mapped
+    N.B: MAX is not applied because output is a probability [0,1] that will be mapped
     to [-1,1], hence the 1 - Prediction(X)*Y can be at minimum 0
          
     Parameters
@@ -142,7 +142,9 @@ def cross_entropy(X, Y, params, q_circuit):
     predictions = v_qcnn_prob(X)
     logprobs1 = jnp.log(predictions).flatten()
     logprobs2 = jnp.log(1 - predictions).flatten()
+    logprobs1 = jnp.square(jnp.square(logprobs1))
+    logprobs2 = jnp.square(jnp.square(logprobs2))
     Y = Y.flatten()
     
-    return - jnp.mean( Y*logprobs1 + (1 - Y)* logprobs2)
+    return + jnp.mean( Y*logprobs1 + (1 - Y)* logprobs2)
 

@@ -1,22 +1,27 @@
 """ This module implements base circuits layout for all the models used"""
 import pennylane as qml
 from pennylane import numpy as np
+
+from typing import Tuple, List
+from numbers import Number
 ##############
 
-def wall_gate(active_wires, gate, params = [], index = 0, samerot = False):
+def wall_gate(active_wires : List[int], gate : qml.operation.Operator, params : List[Number] = [], index : int = 0, samerot : bool = False) -> int:
     """
-    Apply independent rotations of the same gate for all the wires (active_wires)
+    Apply rotations for all the wires (active_wires)
     
     Parameters
     ----------
     active_wires : np.ndarray
         Array of the wires to apply the rotations to
-    gate : Pennylane gate (parametrized or not)
+    gate : qml.ops.qubit.parametric_ops
         Qubit operator to apply
     params : list
         List of parameters of the whole circuit
     index : int
         Starting index for this block of operators
+    samerot : bool
+        if True -> The rotations are not independet of each other but the same
     
     Returns
     -------
@@ -37,7 +42,7 @@ def wall_gate(active_wires, gate, params = [], index = 0, samerot = False):
             gate(wires = int(spin) )
         return index
     
-def wall_cgate_serial(active_wires, cgate, params = [], index = 0, going_down = True):
+def wall_cgate_serial(active_wires : List[int], cgate : qml.operation.Operator, params : List[Number] = [], index : int = 0, going_down : bool = True) -> int:
     """
     Apply drop-down controlled rotations for all the wires (active_wires)
     
@@ -74,7 +79,7 @@ def wall_cgate_serial(active_wires, cgate, params = [], index = 0, going_down = 
                 cgate(wires=[int(spin_next), int(spin)] )
         return index
     
-def wall_cgate_all(active_wires, cgate, params = [], index = 0, going_down = True):
+def wall_cgate_all(active_wires : List[int], cgate : qml.operation.Operator, params : List[Number] = [], index : int = 0, going_down : bool = True) -> int:
     """
     Apply controlled rotations across all the wires (active_wires)
     
@@ -115,7 +120,7 @@ def wall_cgate_all(active_wires, cgate, params = [], index = 0, going_down = Tru
                     cgate(wires=[int(spin_next), int(spin)] )
         return index
 
-def wall_cgate_nextneighbour(active_wires, cgate, params = [], index = 0, going_down = True):
+def wall_cgate_nextneighbour(active_wires : List[int], cgate : qml.operation.Operator, params : List[Number] = [], index : int = 0, going_down : bool = True) -> int:
     """
     Apply drop-down controlled rotations establishing next-neighbour entanglement
     
@@ -152,7 +157,7 @@ def wall_cgate_nextneighbour(active_wires, cgate, params = [], index = 0, going_
                 cgate(wires=[int(spin_next), int(spin)] )
         return index
 
-def circuit_ID9(active_wires, params, index = 0):
+def circuit_ID9(active_wires : List[int], params : List[Number], index : int = 0) -> int:
     """
     Basic block for VQE
     
@@ -176,7 +181,7 @@ def circuit_ID9(active_wires, params, index = 0):
     
     return index
 
-def pooling(active_wires, qmlrot_func, params, index = 0):
+def pooling(active_wires : List[int], qmlrot_func : qml.operation.Operator, params : List[Number], index : int = 0) -> Tuple[int, List[int]]:
     """
     Pooling block for the QCNN
 
@@ -215,12 +220,10 @@ def pooling(active_wires, qmlrot_func, params, index = 0):
     if isodd:
         qmlrot_func(params[index], wires = int(active_wires[-1]) )
         index = index + 1
-     
-    #index = wall_gate(active_wires, qml.RX, params, index)
     
     return index, active_wires
 
-def convolution(active_wires, params, index = 0):
+def convolution(active_wires : List[int], params : List[Number], index : int = 0) -> int:
     """
     Convolution block for the QCNN
 
@@ -241,12 +244,12 @@ def convolution(active_wires, params, index = 0):
     if len(active_wires) > 1:
          # Rotation Groups 2
         for wire1, wire2 in zip(active_wires[0::2],active_wires[1::2]):
-            qml.RY(params[index], wires = int(wire1))
-            qml.RY(params[index], wires = int(wire2))
+            qml.RX(params[index], wires = int(wire1))
+            qml.RX(params[index], wires = int(wire2))
             index += 1
 
         if len(active_wires)%2 != 0:
-            qml.RY(params[index], wires = int(active_wires[-1]))
+            qml.RX(params[index], wires = int(active_wires[-1]))
             index += 1
             
         # CNOTS Groups 1
@@ -256,26 +259,26 @@ def convolution(active_wires, params, index = 0):
         qml.Barrier()
         
         # Rotation Groups 1
-        qml.RY(params[index], wires = int(active_wires[0]))
+        qml.RX(params[index], wires = int(active_wires[0]))
         index += 1
         for wire1, wire2 in zip(active_wires[1::2],active_wires[2::2]):
-            qml.RY(params[index], wires = int(wire1))
-            qml.RY(params[index], wires = int(wire2))
+            qml.RX(params[index], wires = int(wire1))
+            qml.RX(params[index], wires = int(wire2))
             index += 1
 
         if len(active_wires)%2 == 0:
-            qml.RY(params[index], wires = int(active_wires[-1]))
+            qml.RX(params[index], wires = int(active_wires[-1]))
             index += 1
             
         # CNOTS Groups 2
         for wire1, wire2 in zip(active_wires[0::2],active_wires[1::2]):
             qml.CNOT(wires = [int(wire1),int(wire2)])
         
-        index = wall_gate(active_wires, qml.RX, params, index)
+        index = wall_gate(active_wires, qml.RY, params, index)
         
     return index
 
-def encoder_block(wires, wires_trash, shift = 0):
+def encoder_block(wires : List[int], wires_trash : List[int], shift : int = 0):
     """
     Applies CX between a wire and a trash wire for each
     wire/trashwire
@@ -314,7 +317,7 @@ def encoder_block(wires, wires_trash, shift = 0):
         
         qml.CNOT(wires=[int(wire), int(wires_trash[trash_idx])])
 
-def encoder_circuit(wires, wires_trash, active_wires, params, index = 0):
+def encoder_circuit(wires : List[int], wires_trash : List[int], active_wires : List[int], params : List[Number], index : int = 0) -> int:
     """
     Encoder circuit for encoder and autoencoder
 
@@ -342,81 +345,5 @@ def encoder_circuit(wires, wires_trash, active_wires, params, index = 0):
         qml.Barrier()
         index = wall_gate(active_wires, qml.RZ, params, index = index)
 
-    return index
-
-def decoder_block(wires_trash, wires_extra, params, index, shift = 0):
-    """
-    (Almost) specular encoder block
-
-    Parameters
-    ----------
-    wires_trash : np.ndarray
-        Array of the indexes of trash qubits (np.1dsetdiff(np.arange(N),wires))
-    wires_extra : np.ndarray
-        New wires for decoding
-    params: np.ndarray
-        Array of parameters/rotation for the circuit
-    index: int
-        Index from where to pick the elements from the params array
-    shift : int
-        Shift value for connections between wires and trash wires
-        
-    Returns
-    -------
-    int
-        Updated index value
-    """
-    shift = shift % 2
-    
-    enc = False
-    k = 0
-    for wire_target in wires_extra[shift::shift+1]:
-        qml.CRX(params[index + k], wires = [int(wires_trash[int(enc)]), int(wire_target)])
-        k += 1        
-        enc = not enc
-    
-    qml.CRY(params[index + k], wires = [int(wires_extra[shift::shift+1][-2]),int(wires_trash[int(not enc)])])
-    k += 1
-    qml.CRY(params[index + k], wires = [int(wires_extra[shift::shift+1][-1]),int(wires_trash[int(enc)])])
-    
-    return index + k + 1
-
-def decoder_circuit(wires_trash, wires_extra, params, index = 0):
-    """
-    (Almost) specular encoder circuit for autoencoder
-
-    Parameters
-    ----------
-    wires_trash : np.ndarray
-        Array of the indexes of trash qubits (np.1dsetdiff(np.arange(N),wires))
-    wires_extra : np.ndarray
-        New wires for decoding
-    params: np.ndarray
-        Array of parameters/rotation for the circuit
-    index: int
-        Index from where to pick the elements from the params array
-        
-    Returns
-    -------
-    int
-        Updated index value
-    """
-    
-    index = wall_gate(wires_extra, qml.RY, params, index = index)
-    index = wall_gate(wires_extra, qml.RX, params, index = index)
-    index = wall_gate(wires_extra, qml.RY, params, index = index)
-        
-    for shift in range(8):
-        index = decoder_block(wires_trash, wires_extra, params, index, shift)
-        qml.Barrier()
-        
-        index = wall_gate(wires_trash, qml.RX, params, index = index)
-        index = wall_gate(wires_extra, qml.RX, params, index = index)
-        
-        qml.Barrier()
-
-    for n, m in enumerate(wires_extra):
-        qml.SWAP(wires = [int(n),int(m)])
-    
     return index
     

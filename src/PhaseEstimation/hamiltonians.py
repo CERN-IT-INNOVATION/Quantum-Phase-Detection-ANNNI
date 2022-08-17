@@ -1,11 +1,13 @@
 """ This module implements the base class for spin-models Hamiltonians"""
-import sys
-sys.path.insert(0, '../../')
+
+from typing import Callable
 
 ##############
 
 class hamiltonian:
-    def __init__(self, building_func, **kwargs):
+    N : int
+    J : float
+    def __init__(self, building_func : Callable, **kwargs):
         """
         Hamiltonian class
 
@@ -23,7 +25,7 @@ class hamiltonian:
             setattr(self, key, value)
             
         # Get pennylane hamiltonians and labels
-        self.qml_Hs, self.labels, self.recycle_rule, self.model_params = self.func(**kwargs)
+        self.qml_Hs, self.labels, self.recycle_rule, self.model_params, self.side = self.func(**kwargs)
         
         self.n_states = len(self.qml_Hs)
             

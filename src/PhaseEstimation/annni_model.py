@@ -2,9 +2,11 @@
 import pennylane as qml
 from pennylane import numpy as np
 
+from typing import Tuple, List, Union
+
 ##############
 
-def get_H(N, L, K, ring = False):
+def get_H(N: int, L: float, K: float, ring: bool = False) -> qml.ops.qubit.hamiltonian.Hamiltonian:
     """
     Set up Hamiltonian:
             H = J1* (- Σsigma^i_x*sigma_x^{i+1} - (h/J1) * Σsigma^i_z - (J2/J1) * Σsigma^i_x*sigma_x^{i+2}
@@ -16,9 +18,9 @@ def get_H(N, L, K, ring = False):
     N : int
         Number of spins of the Ising Chain
     L : float
-        TODO
+        h/J1 parameter
     K : float
-        TODO
+        J1/J2 parameter
     ring : bool
         If False, system has open-boundaries condition
 
@@ -50,7 +52,7 @@ def get_H(N, L, K, ring = False):
 
     return H
 
-def build_Hs(N, n_states, ring = False):
+def build_Hs(N : int, n_states : int, ring : bool = False) -> Tuple[List[qml.ops.qubit.hamiltonian.Hamiltonian], List[List[int]], List[int], List[Tuple[int, float, float]], int]:
     """
     Sets up np.ndarray of pennylane Hamiltonians with different parameters
     total_states = n_states * n_states
@@ -104,11 +106,12 @@ def build_Hs(N, n_states, ring = False):
                     labels.append([1,1]) # Paramagnetic
             elif l == 0:
                 if k < -.5:
-                    labels.append([1,0]) # Ferromagnetic
+                    labels.append([1,0]) # Antiphase
                 else:
-                    labels.append([0,1]) # Antiphase
+                    labels.append([0,1]) # Ferromagnetic
+                
             else:
-                labels.append([None,None])
+                labels.append([-1,-1])
     
     # Array of indices for the order of states to train through VQE
     #     INDICES                RECYCLE RULE
@@ -129,4 +132,4 @@ def build_Hs(N, n_states, ring = False):
         recycle_rule.append(np.arange((k+1)*n_states - 1, k*n_states - 1, -1) )
         k += 1
         
-    return Hs, np.array(labels), np.array(recycle_rule).flatten(), np.array(anni_params)
+    return Hs, np.array(labels), np.array(recycle_rule).flatten(), np.array(anni_params), n_states

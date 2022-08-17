@@ -3,27 +3,23 @@ import pennylane as qml
 from pennylane import numpy as np
 import jax
 import jax.numpy as jnp
-from jax import jit
 from jax.example_libraries import optimizers
 
 from matplotlib import pyplot as plt
 
 import copy
 import tqdm  # Pretty progress bars
-import joblib  # Writing and loading
+import pickle  # Writing and loading
 
 import warnings
-
 warnings.filterwarnings(
     "ignore",
     message="For Hamiltonians, the eigenvalues will be computed numerically. This may be computationally intensive for a large number of wires.Consider using a sparse representation of the Hamiltonian with qml.SparseHamiltonian.",
 )
 
-import sys, os
-sys.path.insert(0, '../../')
-import PhaseEstimation.circuits as circuits
-import PhaseEstimation.general as qmlgen
-
+from . import circuits as circuits
+from . import general as qmlgen
+from . import vqe as vqe
 ##############
 
 def qcnn_circuit(params, N, n_outputs):
@@ -58,22 +54,15 @@ def qcnn_circuit(params, N, n_outputs):
     index = 0
     
     # Iterate Convolution+Pooling until we only have a single wires
+    index = circuits.wall_gate(active_wires, qml.RY, params, index)
+    circuits.wall_cgate_serial(active_wires, qml.CNOT)
     while len(active_wires) > n_outputs:
         index = circuits.convolution(active_wires, params, index)
-        index = circuits.wall_gate(active_wires, qml.RZ, params, index, samerot = True)
-        index = circuits.convolution(active_wires, params, index)
-        index = circuits.wall_gate(active_wires, qml.RZ, params, index, samerot = True)
-        index = circuits.convolution(active_wires, params, index)
-        qml.Barrier()
-        index = circuits.wall_gate(active_wires, qml.RZ, params, index, samerot = True)
-        qml.Barrier()
-        index, active_wires = circuits.pooling(active_wires, qml.RY, params, index)
+        index, active_wires = circuits.pooling(active_wires, qml.RX, params, index)
+        
         qml.Barrier()
         
-    if n_outputs > 1:
-        #index = circuits.wall_gate(active_wires, qml.RY, params, index)
-        for wire1, wire2 in zip(active_wires[0::2],active_wires[1::2]):
-            qml.CY(wires = [int(wire1),int(wire2)])
+    circuits.wall_cgate_serial(active_wires, qml.CNOT)
     index = circuits.wall_gate(active_wires, qml.RY, params, index)
 
     # Return the number of parameters
@@ -167,7 +156,6 @@ class qcnn:
             self.vqe_params = jnp.array(self.vqe_params)
             
             X, Y = self.vqe_params[mask], self.labels[mask,:].astype(int)
-            
             # The labels stored in the Hamiltonian class are:
             #   > [1,1] for paramagnetic states
             #   > [0,1] for ferromagnetic states
@@ -179,9 +167,9 @@ class qcnn:
             # p(00), p(01), p(10), p(11)
             # The labels need to be transformed accordingly
             #     [0,0] -> [1,0,0,0] trash case
-            #     [0,1] -> [0,1,0,0] ferromagnetic
+            #     [0,1] -> [0,1,0,0] for paramagnetic
             #     [1,0] -> [0,0,1,0] for antiphase
-            #     [1,1] -> [0,0,0,1] for paramagnetic
+            #     [1,1] -> [0,0,0,1] for ferromagnetic
             Ymix = []
             for label in Y:
                 if (label == [0,0]).all():
@@ -200,7 +188,6 @@ class qcnn:
             
             X_train, Y_train = X[train_index], Y[train_index]
             X_test, Y_test   = X[test_index], Y[test_index]
-
             
         if circuit:
             # Display the circuit
@@ -318,12 +305,12 @@ def load(filename_vqe, filename_qcnn):
     class
         QCNN class
     """
-    loaded_vqe = vqe.load(filename_vqe)
+    loaded_vqe = vqe.load_vqe(filename_vqe)
 
     with open(filename_qcnn, "rb") as f:
         params, qcnn_circuit_fun = pickle.load(f)
 
-    loaded_qcnn = qcnn(vqe, qcnn_circuit_fun)
+    loaded_qcnn = qcnn(loaded_vqe, qcnn_circuit_fun)
     loaded_qcnn.params = params
 
     return loaded_qcnn
