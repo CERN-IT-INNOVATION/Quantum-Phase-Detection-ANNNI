@@ -141,3 +141,4 @@ html/
 ./src/PhaseEstimation/data/vqes/ANNNI/N10n100
 ./src/PhaseEstimation/data/vqes/ANNNI/N12n100
 ./src/PhaseEstimation/data/vqes/ANNNI/ring/N10n100
+*.egg.info
