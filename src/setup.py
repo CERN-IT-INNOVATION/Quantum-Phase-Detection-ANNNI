@@ -10,12 +10,15 @@ setup(
     license="MIT",
     packages=find_packages(),
     install_requires=[
+    	"ipykernel==6.15.0",
+    	"joblib==1.1.0",
+    	"plotly==5.8.2",
+    	"matplotlib==3.5.2",
         "PennyLane==0.23.1",
         "numpy",
         "tqdm==4.64.0",
         "jax==0.3.13",
         "jaxlib==0.3.10",
     ],
-    extras_require={"cuda": ["jaxlib==0.3.10+cuda11.cudnn82"]},
     zip_safe=False,
 )

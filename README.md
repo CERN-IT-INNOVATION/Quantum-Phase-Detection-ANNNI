@@ -1,25 +1,24 @@
-# Phase Estimation through VQE+QCNN
-## Activate the environment:
-1. ```$ sudo apt install virtualenv```
-2. ```$ virtualenv <env_name>```
-3. ```$ source <env_name>/bin/activate```
-4. ```(<env_name>)$ pip install -r ./requirements.txt```
+[![Made at CERN!](https://img.shields.io/badge/CERN-CERN%20openlab-blue)](https://openlab.cern/)
 
----
-## Resources:
-### Quantum Programming
-- qiskit textbook https://qiskit.org/textbook/preface.html
-- pennylane (faster simulations than qiskit) https://pennylane.ai/qml/demonstrations.html
+# Quantum phase detection generalisation from marginal quantum neural network models
+Package build on Pennylane for the Quantum Phase Detection of the ANNNI Model through Quantum Convolutional Neural Networks and Quantum Autoencoder
+## How to install:
+### Create and activate the environment
+1. ```$ python3 -m venv <env-name>```
+2. ```$ source <env_name>/bin/activate```
 
-### VQE - ground state preparation
-- original paper https://arxiv.org/abs/1304.3061
-- recent review https://arxiv.org/abs/2103.08505
-- tutorial https://qiskit.org/textbook/ch-applications/vqe-molecules.html, https://pennylane.ai/qml/demos/tutorial_vqe.html, https://qiskit.org/documentation/nature/tutorials/index.html
+### Clone and move to Project folder
+3. ```git clone https://github.com/SaverioMonaco/Quantum-Phase-Detection-ANNNI.git```
+4. ```cd Quantum-Phase-Detection-ANNNI```
 
-### Classification on Quantum Ground-State
-- QCNN (architecture we are interested in and original paper) https://arxiv.org/abs/1810.03787
-- easy application on a Ising chain (i would recommend we start reproducing these results) https://arxiv.org/abs/1906.10155
-- multi-class https://arxiv.org/abs/2110.08386 
-- nice multi-class usecase (but the main text is not that relevant for us)  https://arxiv.org/abs/2111.05292
-- quantum advantage by learning from experiment (for general interest, theoretical paper) https://arxiv.org/abs/2112.00778 
+### Install required packages
+5. ```pip install ./src```
+
+### (Optional) To run on GPU
+6. ```pip install --upgrade pip```
+7. ```pip install --upgrade "jax[cuda]" -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html```
+
+## Examples
+The [/notebooks](notebooks) folder contains many examples for all the use-cases as Jupyter Notebooks
+
 ---
