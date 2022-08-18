@@ -1,4 +1,4 @@
-""" This module implements the base function to implement a VQE for a Ising Chain. """
+""" This module implements the base function to implement a VQE. """
 import pennylane as qml
 from pennylane import numpy as np
 import jax
@@ -10,6 +10,7 @@ from tqdm.auto import tqdm
 import pickle  # Writing and loading
 
 import warnings
+
 warnings.filterwarnings(
     "ignore",
     message="For Hamiltonians, the eigenvalues will be computed numerically. This may be computationally intensive for a large number of wires.Consider using a sparse representation of the Hamiltonian with qml.SparseHamiltonian.",
@@ -23,7 +24,8 @@ from numbers import Number
 
 ##############
 
-def circuit_ising(N : int, params : List[Number]) -> int:
+
+def circuit_ising(N: int, params: List[Number]) -> int:
     """
     Full VQE circuit
     Number of parameters (gates): 7*N
@@ -44,17 +46,18 @@ def circuit_ising(N : int, params : List[Number]) -> int:
     active_wires = np.arange(N)
     index = 0
     qml.Barrier()
-    for _ in range(6): # Depth of the circuit
+    for _ in range(6):  # Depth of the circuit
         # Iterate circuit_ID9, the deeper the merrier
         index = circuits.circuit_ID9(active_wires, params, index)
         qml.Barrier()
-    
+
     # Final independent rotations RX for each wire
     index = circuits.wall_gate(active_wires, qml.RX, params, index)
-    
+
     return index
 
-def circuit_ising2(N : int, params : List[Number]) -> int:
+
+def circuit_ising2(N: int, params: List[Number]) -> int:
     """
     Full VQE circuit, enhanced version of circuit_ising, higher number of parameters
     Number of parameters (gates): 11*N
@@ -79,14 +82,15 @@ def circuit_ising2(N : int, params : List[Number]) -> int:
     for _ in range(9):
         index = circuits.circuit_ID9(active_wires, params, index)
         qml.Barrier()
-        
+
     index = circuits.wall_gate(active_wires, qml.RX, params, index)
     index = circuits.wall_gate(active_wires, qml.RY, params, index)
-    
+
     return index
 
+
 class vqe:
-    def __init__(self, Hs : hamiltonians.hamiltonian, circuit : Callable):
+    def __init__(self, Hs: hamiltonians.hamiltonian, circuit: Callable):
         """
         Class for the VQE algorithm
 
@@ -104,7 +108,9 @@ class vqe:
         # which it will output `index`, namely the number of parameters
         self.n_params = self.circuit([0] * 10000)
         # Initialize randomly all the parameter-arrays for each state
-        self.vqe_params0 = jnp.array( np.random.uniform(-np.pi, np.pi, size=(self.Hs.n_states,self.n_params)) )
+        self.vqe_params0 = jnp.array(
+            np.random.uniform(-np.pi, np.pi, size=(self.Hs.n_states, self.n_params))
+        )
         self.device = qml.device("default.qubit.jax", wires=self.Hs.N, shots=None)
 
         ### STATES FUNCTIONS ###
@@ -115,12 +121,18 @@ class vqe:
 
             return qml.state()
 
-        self.v_q_vqe_state = jax.vmap(lambda v: q_vqe_state(v), in_axes=(0))  # vmap of the state circuit
-        self.jv_q_vqe_state = jax.jit(self.v_q_vqe_state)                     # jitted vmap of the state circuit
-        self.j_q_vqe_state = jax.jit(lambda p: q_vqe_state(p))                # jitted state circuit
+        self.v_q_vqe_state = jax.vmap(
+            lambda v: q_vqe_state(v), in_axes=(0)
+        )  # vmap of the state circuit
+        self.jv_q_vqe_state = jax.jit(
+            self.v_q_vqe_state
+        )  # jitted vmap of the state circuit
+        self.j_q_vqe_state = jax.jit(lambda p: q_vqe_state(p))  # jitted state circuit
 
         # For updating progress bar on fidelity between true states and vqe states
-        self.jv_fidelties = jax.jit(lambda true, pars: losses.vqe_fidelities(true, pars, q_vqe_state) )
+        self.jv_fidelties = jax.jit(
+            lambda true, pars: losses.vqe_fidelities(true, pars, q_vqe_state)
+        )
 
         ### ENERGY FUNCTIONS ###
         # Computes <psi|H|psi>
@@ -130,12 +142,12 @@ class vqe:
         self.j_compute_vqe_E = jax.jit(compute_vqe_E)
         self.v_compute_vqe_E = jax.vmap(compute_vqe_E, in_axes=(0, 0))
         self.jv_compute_vqe_E = jax.jit(self.v_compute_vqe_E)
-        
+
         # Loss function: LOSS = 1/n_states SUM_i ( ENERGY(psi_i) )
         def loss(params, Hs):
             pred_states = self.v_q_vqe_state(params)
             vqe_e = self.v_compute_vqe_E(pred_states, Hs)
-            
+
             # Cast as real because energies are supposed to be it
             return jnp.mean(jnp.real(vqe_e))
 
@@ -152,14 +164,64 @@ class vqe:
             return qml.state()
 
         return qml.draw(vqe_state)(self)
-        
+
     def _update(self, params, Hs_batch, opt_state, opt_update, get_params):
         grads = self.jd_loss(params, Hs_batch)
         opt_state = opt_update(0, grads, opt_state)
 
-        return get_params(opt_state), opt_state 
+        return get_params(opt_state), opt_state
+
+    def _get_neighbours(self, idx: int) -> List[Number]:
+        """
+        Function for getting the neighbouring indexes
+        (up, down, left, right) of a given state (K, L)
+        in the ANNNI model.
         
-    def train_site(self, lr : Number, n_epochs : int, site : int):
+        Examples
+        --------
+        
+        Indexes:
+        +--------------+
+        | 4  9  14  19 |
+        | 3  8  13  18 |
+        | 2  7  12  17 |
+        | 1  6  11  16 |
+        | 0  5  10  15 |
+        +--------------+
+        
+        >>> get_neighbours(vqeclass, 0)
+        array([1, 5])
+        >>> get_neighbours(vqeclass, 12)
+        array([7, 13, 17, 11])
+        
+        Parameters
+        ----------
+        vqeclass : class
+            Class of the VQE, used to get the size of the side and the recycle rule
+        idx : int
+            Index of the desired state
+
+        Returns
+        -------
+        np.ndarray
+            Neighbouring indexes
+        """
+
+        side = self.Hs.side
+
+        neighbours = np.array([idx + 1, idx - 1, idx + side, idx - side])
+        neighbours = np.delete(
+            neighbours, np.logical_not(np.isin(neighbours, self.Hs.recycle_rule))
+        )
+
+        if (idx + 1) % side == 0 and idx != self.Hs.n_states - 1:
+            neighbours = np.delete(neighbours, 0)
+        if (idx) % side == 0 and idx != 0:
+            neighbours = np.delete(neighbours, 1)
+
+        return neighbours
+
+    def train_site(self, lr: Number, n_epochs: int, site: int):
         """
         Minimize <psi|H|psi> for a single site
         
@@ -172,17 +234,17 @@ class vqe:
 
         index = [site]
         param = copy.copy(self.vqe_params0[index])
-        
+
         opt_init, opt_update, get_params = optimizers.adam(lr)
         opt_state = opt_init(param)
-        
+
         for _ in range(n_epochs):
             param, opt_state = self._update(param, H, opt_state, opt_update, get_params)
-        
-        self.vqe_e0[site]      = self.jv_compute_vqe_E(self.jv_q_vqe_state(param), H)
+
+        self.vqe_e0[site] = self.jv_compute_vqe_E(self.jv_q_vqe_state(param), H)
         self.vqe_params0[site] = param
-          
-    def train_site_excited(self, lr : Number, n_epochs : int, site : int, beta : Number):
+
+    def train_site_excited(self, lr: Number, n_epochs: int, site: int, beta: Number):
         """
         Minimize <psi|H|psi> + beta|<psi|psi_0>|^2 for a single site
         """
@@ -191,17 +253,19 @@ class vqe:
         # > H_eff: Effective Hamiltonian for the model (H +|psi><psi|)
         # > site: index for (L,K) combination
         H, H_eff, self.true_e1[site] = qmlgen.get_VQD_params(self.Hs.qml_Hs[site], beta)
-        
+
         param = copy.copy(self.vqe_params1[[site]])
         opt_init, opt_update, get_params = optimizers.adam(lr)
         opt_state = opt_init(param)
         for _ in range(n_epochs):
-            param, opt_state = self._update(param, H_eff, opt_state, opt_update, get_params)
-            
-        self.vqe_e1[site]      = self.jv_compute_vqe_E(self.jv_q_vqe_state(param), H)
+            param, opt_state = self._update(
+                param, H_eff, opt_state, opt_update, get_params
+            )
+
+        self.vqe_e1[site] = self.jv_compute_vqe_E(self.jv_q_vqe_state(param), H)
         self.vqe_params1[site] = param
 
-    def train(self, lr : Number, n_epochs : int, circuit : bool = False):
+    def train(self, lr: Number, n_epochs: int, circuit: bool = False):
         """
         Training function for the VQE.
 
@@ -214,18 +278,22 @@ class vqe:
         circuit : bool
             if True -> Prints the circuit
         """
-        pred_site : int
+        pred_site: int
 
         if circuit:
             # Display the circuit
             print("+--- CIRCUIT ---+")
             print(self)
-        
+
         # The true GS energies will be computed during training
-        # and not during initialization of the VQE since it 
+        # and not during initialization of the VQE since it
         # requires the diagonalization of many large matrices
-        self.vqe_e0, self.vqe_params0, self.true_e0 = np.zeros((self.Hs.n_states,)), np.zeros((self.Hs.n_states,self.n_params)), np.zeros((self.Hs.n_states,))
-        
+        self.vqe_e0, self.vqe_params0, self.true_e0 = (
+            np.zeros((self.Hs.n_states,)),
+            np.zeros((self.Hs.n_states, self.n_params)),
+            np.zeros((self.Hs.n_states,)),
+        )
+
         progress = tqdm(self.Hs.recycle_rule, position=0, leave=True)
         # Site will follow the order of Hs.recycle rule:
         # For ANNI Model:
@@ -241,25 +309,29 @@ class vqe:
         # For Ising Chain:
         #    INDICES               RECYCLE RULE
         # +------------ -        +------------ -
-        # | 0 | 1 | 2 |     ==>  | 0 | 1 | 2 | 
+        # | 0 | 1 | 2 |     ==>  | 0 | 1 | 2 |
         # +------------ -        +------------ -
         for site in progress:
-            # First site will be trained more since it starts from a 
+            # First site will be trained more since it starts from a
             # random configuration of parameters
             if site == 0:
-                epochs = 10*n_epochs
+                epochs = 10 * n_epochs
                 # Random initial state
-                self.vqe_params0[site] = jnp.array( np.random.uniform(-np.pi, np.pi, size=(self.n_params)) ) 
+                self.vqe_params0[site] = jnp.array(
+                    np.random.uniform(-np.pi, np.pi, size=(self.n_params))
+                )
             else:
                 epochs = n_epochs
                 # Initial state is the final state of last site trained
                 self.vqe_params0[site] = copy.copy(self.vqe_params0[pred_site])
-                
+
             self.train_site(lr, epochs, int(site))
-            self.true_e0[site] 
+            self.true_e0[site]
             pred_site = site  # Previous site for next training
 
-    def train_excited(self, lr : Number, n_epochs : int, beta : Number, circuit : bool = False):
+    def train_excited(
+        self, lr: Number, n_epochs: int, beta: Number, circuit: bool = False
+    ):
         """
         Training function through VQD.
         VQD is trained finding psi such that:
@@ -277,33 +349,41 @@ class vqe:
         circuit : bool
             if True -> Prints the circuit
         """
-        pred_site : int
-        
+        pred_site: int
+
         if circuit:
             # Display the circuit
             print("+--- CIRCUIT ---+")
             print(self)
 
         # Initialize parameters
-        self.vqe_e1, self.vqe_params1, self.true_e1 = np.zeros((self.Hs.n_states,)), np.zeros((self.Hs.n_states,self.n_params)), np.zeros((self.Hs.n_states,))
-        
+        self.vqe_e1, self.vqe_params1, self.true_e1 = (
+            np.zeros((self.Hs.n_states,)),
+            np.zeros((self.Hs.n_states, self.n_params)),
+            np.zeros((self.Hs.n_states,)),
+        )
+
         progress = tqdm(self.Hs.recycle_rule, position=0, leave=True)
         for site in progress:
-            # First site will be trained more since it starts from a 
+            # First site will be trained more since it starts from a
             # random configuration of parameters
             if site == 0:
-                epochs = 10*n_epochs
+                epochs = 10 * n_epochs
                 # Random initial state
-                self.vqe_params1[site] = jnp.array( np.random.uniform(-np.pi, np.pi, size=(self.n_params)) ) 
+                self.vqe_params1[site] = jnp.array(
+                    np.random.uniform(-np.pi, np.pi, size=(self.n_params))
+                )
             else:
                 epochs = n_epochs
                 # Initial state is the final state of last site trained
                 self.vqe_params1[site] = copy.copy(self.vqe_params1[pred_site])
-                
-            self.train_site_excited(lr, epochs, int(site), beta)
-            pred_site = site # Previous site for next training
 
-    def train_refine(self, lr : Number, n_epochs : int, acc_thr : Number, assist : bool = False):
+            self.train_site_excited(lr, epochs, int(site), beta)
+            pred_site = site  # Previous site for next training
+
+    def train_refine(
+        self, lr: Number, n_epochs: int, acc_thr: Number, assist: bool = False
+    ):
         """
         Training only the sites that have an accuracy score worse (higher) than acc_thr
 
@@ -324,25 +404,37 @@ class vqe:
         # Select the sites to train based on their accuracy score
         for site in self.Hs.recycle_rule:
             # Accuracy value of the given site
-            accuracy = np.abs((self.vqe_e0[site] - self.true_e0[site])/self.true_e0[site])
+            accuracy = np.abs(
+                (self.vqe_e0[site] - self.true_e0[site]) / self.true_e0[site]
+            )
 
-            if accuracy > acc_thr: # If the accuracy is bad (higher than threshold)...
+            if accuracy > acc_thr:  # If the accuracy is bad (higher than threshold)...
                 # if assist we copy the state from the best neighbouring site and
                 # starting training from there
                 if assist:
                     # Array of indexes of neighbouring sites
-                    neighbours = np.array(qmlgen.get_neighbours(self, site))
+                    neighbours = np.array(self._get_neighbours(site))
                     # Array of their respective accuracies
-                    neighbours_accuracies = np.abs((self.vqe_e0[neighbours] - self.true_e0[neighbours])/self.true_e0[neighbours])
+                    neighbours_accuracies = np.abs(
+                        (self.vqe_e0[neighbours] - self.true_e0[neighbours])
+                        / self.true_e0[neighbours]
+                    )
                     # Select the index of the neighbour with the best (lowest) accuracy score
                     best_neighbour = neighbours[np.argmin(neighbours_accuracies)]
                     self.vqe_params0[site] = copy.copy(self.vqe_params0[best_neighbour])
                 # Start training the site
-                self.train_site(lr, n_epochs, int(site) )
+                self.train_site(lr, n_epochs, int(site))
 
             progress.update(1)
-            
-    def train_refine_excited(self, lr : Number, n_epochs : int, acc_thr : Number, beta : Number, assist : bool = False):
+
+    def train_refine_excited(
+        self,
+        lr: Number,
+        n_epochs: int,
+        acc_thr: Number,
+        beta: Number,
+        assist: bool = False,
+    ):
         """
         Training only the sites that have an accuracy score worse (higher) than acc_thr
         for the excited states
@@ -363,16 +455,21 @@ class vqe:
         # Select the sites to train based on their accuracy score
         for site in self.Hs.recycle_rule:
             # Accuracy value of the given site
-            accuracy = np.abs((self.vqe_e1[site] - self.true_e1[site])/self.true_e1[site])
+            accuracy = np.abs(
+                (self.vqe_e1[site] - self.true_e1[site]) / self.true_e1[site]
+            )
 
-            if accuracy > acc_thr: # If the accuracy is bad (higher than threshold)...
+            if accuracy > acc_thr:  # If the accuracy is bad (higher than threshold)...
                 # if assist we copy the state from the best neighbouring site and
                 # starting training from there
                 if assist:
                     # Array of indexes of neighbouring sites
-                    neighbours = np.array(qmlgen.get_neighbours(self, site))
+                    neighbours = np.array(self._get_neighbours(site))
                     # Array of their respective accuracies
-                    neighbours_accuracies = np.abs((self.vqe_e1[neighbours] - self.true_e1[neighbours])/self.true_e1[neighbours])
+                    neighbours_accuracies = np.abs(
+                        (self.vqe_e1[neighbours] - self.true_e1[neighbours])
+                        / self.true_e1[neighbours]
+                    )
                     # Select the index of the neighbour with the best (lowest) accuracy score
                     best_neighbour = neighbours[np.argmin(neighbours_accuracies)]
                     self.vqe_params1[site] = copy.copy(self.vqe_params1[best_neighbour])
@@ -380,8 +477,8 @@ class vqe:
                 self.train_site_excited(lr, n_epochs, int(site), beta)
 
             progress.update(1)
-            
-    def save(self, filename : str):
+
+    def save(self, filename: str):
         """
         Save main parameters of the VQE class to a local file.
         Parameters saved:
@@ -394,7 +491,7 @@ class vqe:
         """
 
         if not isinstance(filename, str):
-            raise TypeError('Invalid name for file')
+            raise TypeError("Invalid name for file")
 
         # Check if the VQE was trained for excited states aswell:
         excited = True
@@ -402,14 +499,14 @@ class vqe:
             self.vqe_params1
         except:
             excited = False
-            
+
         if not excited:
             things_to_save = [
                 self.Hs,
                 self.vqe_params0,
                 self.vqe_e0,
                 self.true_e0,
-                self.circuit_fun
+                self.circuit_fun,
             ]
         else:
             things_to_save = [
@@ -420,14 +517,14 @@ class vqe:
                 self.vqe_params1,
                 self.vqe_e1,
                 self.true_e1,
-                self.circuit_fun
+                self.circuit_fun,
             ]
-            
+
         with open(filename, "wb") as f:
             pickle.dump(things_to_save, f)
 
 
-def load_vqe(filename : str) -> vqe:
+def load_vqe(filename: str) -> vqe:
     """
     Load main parameters of a VQE class saved to a local file using vqe.save(filename)
 
@@ -442,7 +539,7 @@ def load_vqe(filename : str) -> vqe:
         VQE class with main parameters
     """
     if not isinstance(filename, str):
-            raise TypeError('Invalid name for file')
+        raise TypeError("Invalid name for file")
 
     with open(filename, "rb") as f:
         things_to_load = pickle.load(f)
@@ -451,14 +548,23 @@ def load_vqe(filename : str) -> vqe:
         Hs, vqe_params, vqe_e, true_e, circuit_fun = things_to_load
         loaded_vqe = vqe(Hs, circuit_fun)
     else:
-        Hs, vqe_params, vqe_e, true_e, vqe_params1, vqe_e1, true_e1, circuit_fun = things_to_load
+        (
+            Hs,
+            vqe_params,
+            vqe_e,
+            true_e,
+            vqe_params1,
+            vqe_e1,
+            true_e1,
+            circuit_fun,
+        ) = things_to_load
         loaded_vqe = vqe(Hs, circuit_fun)
         loaded_vqe.vqe_params1 = vqe_params1
         loaded_vqe.vqe_e1 = vqe_e1
         loaded_vqe.true_e1 = true_e1
-    
+
     loaded_vqe.vqe_params0 = vqe_params
     loaded_vqe.vqe_e0 = vqe_e
     loaded_vqe.true_e0 = true_e
-    
+
     return loaded_vqe

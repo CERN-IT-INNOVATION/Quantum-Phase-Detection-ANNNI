@@ -1,15 +1,18 @@
-""" This module implements the base function for treating ANNNI Ising-model """
+""" This module implements the base functions for treating the Hamiltonian of the ANNNI Ising-model """
 import pennylane as qml
 from pennylane import numpy as np
 
-from typing import Tuple, List, Union
+from typing import Tuple, List
 
 ##############
 
-def get_H(N: int, L: float, K: float, ring: bool = False) -> qml.ops.qubit.hamiltonian.Hamiltonian:
+
+def get_H(
+    N: int, L: float, K: float, ring: bool = False
+) -> qml.ops.qubit.hamiltonian.Hamiltonian:
     """
     Set up Hamiltonian:
-            H = J1* (- Σsigma^i_x*sigma_x^{i+1} - (h/J1) * Σsigma^i_z - (J2/J1) * Σsigma^i_x*sigma_x^{i+2}
+            H = J1* (- Σsigma^i_x*sigma_x^{i+1} - (h/J1) * Σsigma^i_z - (J2/J1) * Σsigma^i_x*sigma_x^{i+2} )
         
         [where J1 = 1, (h/J1) = Lambda(/L), (J2/J1) = K]
 
@@ -30,18 +33,18 @@ def get_H(N: int, L: float, K: float, ring: bool = False) -> qml.ops.qubit.hamil
         Hamiltonian Pennylane class for the (Transverse) Ising Chain
     """
     # Interaction of spins with magnetic field
-    H = - L * qml.PauliZ(0)
+    H = -L * qml.PauliZ(0)
     for i in range(1, N):
         H = H - L * qml.PauliZ(i)
 
     # Interaction between spins (neighbouring):
     for i in range(0, N - 1):
         H = H + (-1) * (qml.PauliX(i) @ qml.PauliX(i + 1))
-        
+
     # Interaction between spins (next-neighbouring):
     for i in range(0, N - 2):
         H = H + (-1) * K * (qml.PauliX(i) @ qml.PauliX(i + 2))
-        
+
     # If ring == True, the 'chain' needs to be closed
     if ring:
         # Nearest interaction between last spin and first spin -particles
@@ -52,12 +55,21 @@ def get_H(N: int, L: float, K: float, ring: bool = False) -> qml.ops.qubit.hamil
 
     return H
 
-def build_Hs(N : int, n_states : int, ring : bool = False) -> Tuple[List[qml.ops.qubit.hamiltonian.Hamiltonian], List[List[int]], List[int], List[Tuple[int, float, float]], int]:
+
+def build_Hs(
+    N: int, n_states: int, ring: bool = False
+) -> Tuple[
+    List[qml.ops.qubit.hamiltonian.Hamiltonian],
+    List[List[int]],
+    List[int],
+    List[Tuple[int, float, float]],
+    int,
+]:
     """
     Sets up np.ndarray of pennylane Hamiltonians with different parameters
     total_states = n_states * n_states
-    Taking n_states values of K from 0 to -1 (NB the sign)
-    Taking n_states values of L from 0 to +2
+    K can have n_states values from 0 to -1 (NB the sign)
+    L can have n_states values from 0 to +2
     
     Parameters
     ----------
@@ -80,39 +92,39 @@ def build_Hs(N : int, n_states : int, ring : bool = False) -> Tuple[List[qml.ops
     np.array
         Array for the states parameters
     """
-    
+
     # Set up arrays of the parameters K and Ls
     K_states = np.linspace(0, -1, n_states)
     L_states = np.linspace(0, 2, n_states)
-    
-    Hs = []            # Array of the Pennylane hamiltonians
-    labels = []        # Array of the labels:
-                       #   > [1,1] for paramagnetic states
-                       #   > [0,1] for ferromagnetic states
-                       #   > [1,0] for antiphase states
-                       #   > [None,None] for states with no analytical solutions
-    anni_params = []   # Array of parameters [N, L, K]
-    
+
+    Hs = []  # Array of the Pennylane hamiltonians
+    labels = []  # Array of the labels:
+    #   > [1,1] for paramagnetic states
+    #   > [0,1] for ferromagnetic states
+    #   > [1,0] for antiphase states
+    #   > [None,None] for states with no analytical solutions
+    anni_params = []  # Array of parameters [N, L, K]
+
     for k in K_states:
         for l in L_states:
-            anni_params.append([N,l,k]) 
+            anni_params.append([N, l, k])
             Hs.append(get_H(int(N), float(l), float(k), ring))
-            
+
             # Append the known labels (phases of the model)
             if k == 0:
                 if l < 1:
-                    labels.append([0,1]) # Ferromagnetic
+                    labels.append([0, 1])  # Ferromagnetic
                 else:
-                    labels.append([1,1]) # Paramagnetic
+                    labels.append([1, 1])  # Paramagnetic
             elif l == 0:
-                if k < -.5:
-                    labels.append([1,0]) # Antiphase
+                if k < -0.5:
+                    labels.append([1, 0])  # Antiphase
                 else:
-                    labels.append([0,1]) # Ferromagnetic
-                
+                    labels.append([0, 1])  # Ferromagnetic
+
             else:
-                labels.append([-1,-1])
-    
+                labels.append([-1, -1])
+
     # Array of indices for the order of states to train through VQE
     #     INDICES                RECYCLE RULE
     # +--------------+       +--------------+
@@ -125,11 +137,17 @@ def build_Hs(N : int, n_states : int, ring : bool = False) -> Tuple[List[qml.ops
     recycle_rule = []
     k = 0
     while k < n_states:
-        recycle_rule.append(np.arange(k*n_states, (k+1)*n_states) )
+        recycle_rule.append(np.arange(k * n_states, (k + 1) * n_states))
         k += 1
         if k >= n_states:
             break
-        recycle_rule.append(np.arange((k+1)*n_states - 1, k*n_states - 1, -1) )
+        recycle_rule.append(np.arange((k + 1) * n_states - 1, k * n_states - 1, -1))
         k += 1
-        
-    return Hs, np.array(labels), np.array(recycle_rule).flatten(), np.array(anni_params), n_states
+
+    return (
+        Hs,
+        np.array(labels),
+        np.array(recycle_rule).flatten(),
+        np.array(anni_params),
+        n_states,
+    )
