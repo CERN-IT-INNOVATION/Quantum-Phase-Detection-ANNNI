@@ -1,6 +1,6 @@
 [![Made at CERN!](https://img.shields.io/badge/CERN-CERN%20openlab-blue)](https://openlab.cern/) 
 [![DOI](https://zenodo.org/badge/478113360.svg)](https://zenodo.org/badge/latestdoi/478113360)
-[![DOI:10.48550/2208.08748](http://img.shields.io/badge/DOI-10.48550/2208.08748-B31B1B.svg)](https://doi.org/10.48550/arXiv.2208.08748)
+[![DOI:10.48550/arXiv.2208.08748](http://img.shields.io/badge/DOI-10.48550/arXiv.2208.08748-B31B1B.svg)](https://doi.org/10.48550/arXiv.2208.08748)
 
 
 
