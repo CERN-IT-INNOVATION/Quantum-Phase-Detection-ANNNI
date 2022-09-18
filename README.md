@@ -26,3 +26,14 @@ Package build on Pennylane for the Quantum Phase Detection of the ANNNI Model th
 The [/notebooks](notebooks) folder contains many examples for all the use-cases as Jupyter Notebooks
 
 ---
+## How to cite
+If you used this package for your research, please cite
+
+```
+@article{monaco2022quantum,
+  title={Quantum phase detection generalisation from marginal quantum neural network models},
+  author={Monaco, Saverio and Kiss, Oriel and Mandarino, Antonio and Vallecorsa, Sofia and Grossi, Michele},
+  journal={arXiv preprint arXiv:2208.08748},
+  year={2022}
+}
+```
