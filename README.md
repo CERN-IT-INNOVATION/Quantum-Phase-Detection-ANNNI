@@ -1,4 +1,7 @@
-[![Made at CERN!](https://img.shields.io/badge/CERN-CERN%20openlab-blue)](https://openlab.cern/)
+[![Made at CERN!](https://img.shields.io/badge/CERN-CERN%20openlab-blue)](https://openlab.cern/) 
+[![DOI](https://zenodo.org/badge/478113360.svg)](https://zenodo.org/badge/latestdoi/478113360)
+
+
 
 # Quantum phase detection generalisation from marginal quantum neural network models
 Package build on Pennylane for the Quantum Phase Detection of the ANNNI Model through Quantum Convolutional Neural Networks and Quantum Autoencoder
