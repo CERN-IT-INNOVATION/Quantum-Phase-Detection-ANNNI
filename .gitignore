@@ -135,7 +135,7 @@ other/
 # environment folder
 qua/ 
 # Documentation
-html/
+
 # Large files
 *.pkl
 ./src/PhaseEstimation/data/vqes/ANNNI/N10n100
