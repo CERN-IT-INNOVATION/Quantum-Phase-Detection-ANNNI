@@ -1,0 +1,19 @@
+version: 2
+
+build:
+  os: "ubuntu-20.04"
+  tools:
+    python: "3.9"
+
+sphinx:
+    builder: html
+    configuration: docs/source/conf.py
+    fail_on_warning: true
+
+python:
+    install:
+        - method: pip
+          path: .
+          extra_requirements:
+              - docs
+    system_packages: true
