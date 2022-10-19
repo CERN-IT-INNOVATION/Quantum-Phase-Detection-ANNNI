@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PhaseEstimation.annni_model &mdash; PhaseEstimationThroughQML 1.0.0 documentation</title>
+      <link rel="stylesheet" href="../../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../../_static/css/theme.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="../../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script data-url_root="../../" id="documentation_options" src="../../_static/documentation_options.js"></script>
+        <script src="../../_static/jquery.js"></script>
+        <script src="../../_static/underscore.js"></script>
+        <script src="../../_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script src="../../_static/doctools.js"></script>
+    <script src="../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+            <a href="../../index.html" class="icon icon-home"> PhaseEstimationThroughQML
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <!-- Local TOC -->
+              <div class="local-toc"></div>
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../index.html">PhaseEstimationThroughQML</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../index.html" class="icon icon-home"></a> &raquo;</li>
+          <li><a href="../index.html">Module code</a> &raquo;</li>
+      <li>PhaseEstimation.annni_model</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for PhaseEstimation.annni_model</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot; This module implements the base functions for treating the Hamiltonian of the ANNNI Ising-model &quot;&quot;&quot;</span>
+<span class="kn">import</span> <span class="nn">pennylane</span> <span class="k">as</span> <span class="nn">qml</span>
+<span class="kn">from</span> <span class="nn">pennylane</span> <span class="kn">import</span> <span class="n">numpy</span> <span class="k">as</span> <span class="n">np</span>
+
+<span class="kn">from</span> <span class="nn">typing</span> <span class="kn">import</span> <span class="n">Tuple</span><span class="p">,</span> <span class="n">List</span>
+
+<span class="c1">##############</span>
+
+<div class="viewcode-block" id="get_H"><a class="viewcode-back" href="../../PhaseEstimation.html#PhaseEstimation.annni_model.get_H">[docs]</a><span class="k">def</span> <span class="nf">get_H</span><span class="p">(</span><span class="n">N</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">L</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span> <span class="n">K</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span> <span class="n">ring</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">qml</span><span class="o">.</span><span class="n">ops</span><span class="o">.</span><span class="n">qubit</span><span class="o">.</span><span class="n">hamiltonian</span><span class="o">.</span><span class="n">Hamiltonian</span><span class="p">:</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Set up Hamiltonian:</span>
+<span class="sd">            H = J1* (- Σsigma^i_x*sigma_x^{i+1} - (h/J1) * Σsigma^i_z - (J2/J1) * Σsigma^i_x*sigma_x^{i+2} )</span>
+<span class="sd">        </span>
+<span class="sd">        [where J1 = 1, (h/J1) = Lambda(/L), (J2/J1) = K]</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    N : int</span>
+<span class="sd">        Number of spins of the Ising Chain</span>
+<span class="sd">    L : float</span>
+<span class="sd">        h/J1 parameter</span>
+<span class="sd">    K : float</span>
+<span class="sd">        J1/J2 parameter</span>
+<span class="sd">    ring : bool</span>
+<span class="sd">        If False, system has open-boundaries condition</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    pennylane.ops.qubit.hamiltonian.Hamiltonian</span>
+<span class="sd">        Hamiltonian Pennylane class for the (Transverse) Ising Chain</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># Interaction of spins with magnetic field</span>
+    <span class="n">H</span> <span class="o">=</span> <span class="o">-</span> <span class="n">L</span> <span class="o">*</span> <span class="n">qml</span><span class="o">.</span><span class="n">PauliZ</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">N</span><span class="p">):</span>
+        <span class="n">H</span> <span class="o">=</span> <span class="n">H</span> <span class="o">-</span> <span class="n">L</span> <span class="o">*</span> <span class="n">qml</span><span class="o">.</span><span class="n">PauliZ</span><span class="p">(</span><span class="n">i</span><span class="p">)</span>
+
+    <span class="c1"># Interaction between spins (neighbouring):</span>
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">N</span> <span class="o">-</span> <span class="mi">1</span><span class="p">):</span>
+        <span class="n">H</span> <span class="o">=</span> <span class="n">H</span> <span class="o">+</span> <span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">)</span> <span class="o">*</span> <span class="p">(</span><span class="n">qml</span><span class="o">.</span><span class="n">PauliX</span><span class="p">(</span><span class="n">i</span><span class="p">)</span> <span class="o">@</span> <span class="n">qml</span><span class="o">.</span><span class="n">PauliX</span><span class="p">(</span><span class="n">i</span> <span class="o">+</span> <span class="mi">1</span><span class="p">))</span>
+        
+    <span class="c1"># Interaction between spins (next-neighbouring):</span>
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">N</span> <span class="o">-</span> <span class="mi">2</span><span class="p">):</span>
+        <span class="n">H</span> <span class="o">=</span> <span class="n">H</span> <span class="o">+</span> <span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">)</span> <span class="o">*</span> <span class="n">K</span> <span class="o">*</span> <span class="p">(</span><span class="n">qml</span><span class="o">.</span><span class="n">PauliX</span><span class="p">(</span><span class="n">i</span><span class="p">)</span> <span class="o">@</span> <span class="n">qml</span><span class="o">.</span><span class="n">PauliX</span><span class="p">(</span><span class="n">i</span> <span class="o">+</span> <span class="mi">2</span><span class="p">))</span>
+        
+    <span class="c1"># If ring == True, the &#39;chain&#39; needs to be closed</span>
+    <span class="k">if</span> <span class="n">ring</span><span class="p">:</span>
+        <span class="c1"># Nearest interaction between last spin and first spin -particles</span>
+        <span class="n">H</span> <span class="o">=</span> <span class="n">H</span> <span class="o">+</span> <span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">)</span> <span class="o">*</span> <span class="p">(</span><span class="n">qml</span><span class="o">.</span><span class="n">PauliX</span><span class="p">(</span><span class="n">N</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span> <span class="o">@</span> <span class="n">qml</span><span class="o">.</span><span class="n">PauliX</span><span class="p">(</span><span class="mi">0</span><span class="p">))</span>
+        <span class="c1"># Next nearest interactions:</span>
+        <span class="n">H</span> <span class="o">=</span> <span class="n">H</span> <span class="o">+</span> <span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">)</span> <span class="o">*</span> <span class="n">K</span> <span class="o">*</span> <span class="p">(</span><span class="n">qml</span><span class="o">.</span><span class="n">PauliX</span><span class="p">(</span><span class="n">N</span> <span class="o">-</span> <span class="mi">2</span><span class="p">)</span> <span class="o">@</span> <span class="n">qml</span><span class="o">.</span><span class="n">PauliX</span><span class="p">(</span><span class="mi">0</span><span class="p">))</span>
+        <span class="n">H</span> <span class="o">=</span> <span class="n">H</span> <span class="o">+</span> <span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">)</span> <span class="o">*</span> <span class="n">K</span> <span class="o">*</span> <span class="p">(</span><span class="n">qml</span><span class="o">.</span><span class="n">PauliX</span><span class="p">(</span><span class="n">N</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span> <span class="o">@</span> <span class="n">qml</span><span class="o">.</span><span class="n">PauliX</span><span class="p">(</span><span class="mi">1</span><span class="p">))</span>
+
+    <span class="k">return</span> <span class="n">H</span></div>
+
+<div class="viewcode-block" id="build_Hs"><a class="viewcode-back" href="../../PhaseEstimation.html#PhaseEstimation.annni_model.build_Hs">[docs]</a><span class="k">def</span> <span class="nf">build_Hs</span><span class="p">(</span><span class="n">N</span> <span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">n_states</span> <span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">ring</span> <span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="n">qml</span><span class="o">.</span><span class="n">ops</span><span class="o">.</span><span class="n">qubit</span><span class="o">.</span><span class="n">hamiltonian</span><span class="o">.</span><span class="n">Hamiltonian</span><span class="p">],</span> <span class="n">List</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="nb">int</span><span class="p">]],</span> <span class="n">List</span><span class="p">[</span><span class="nb">int</span><span class="p">],</span> <span class="n">List</span><span class="p">[</span><span class="n">Tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">float</span><span class="p">,</span> <span class="nb">float</span><span class="p">]],</span> <span class="nb">int</span><span class="p">]:</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Sets up np.ndarray of pennylane Hamiltonians with different parameters</span>
+<span class="sd">    total_states = n_states * n_states</span>
+<span class="sd">    K can have n_states values from 0 to -1 (NB the sign)</span>
+<span class="sd">    L can have n_states values from 0 to +2</span>
+<span class="sd">    </span>
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    N : int</span>
+<span class="sd">        Number of spins of the Ising Chain</span>
+<span class="sd">    n_states : int</span>
+<span class="sd">        Number of Hamiltonians to generate</span>
+<span class="sd">    ring : bool</span>
+<span class="sd">        If False, system has open-boundaries condition</span>
+<span class="sd">        </span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    np.array</span>
+<span class="sd">        Array of pennylane Hamiltonians</span>
+<span class="sd">    np.array</span>
+<span class="sd">        Array of labels for analytical solutionss</span>
+<span class="sd">    np.array</span>
+<span class="sd">        Array for the recycle rule</span>
+<span class="sd">    np.array</span>
+<span class="sd">        Array for the states parameters</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    
+    <span class="c1"># Set up arrays of the parameters K and Ls</span>
+    <span class="n">K_states</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="n">n_states</span><span class="p">)</span>
+    <span class="n">L_states</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="n">n_states</span><span class="p">)</span>
+    
+    <span class="n">Hs</span> <span class="o">=</span> <span class="p">[]</span>            <span class="c1"># Array of the Pennylane hamiltonians</span>
+    <span class="n">labels</span> <span class="o">=</span> <span class="p">[]</span>        <span class="c1"># Array of the labels:</span>
+                       <span class="c1">#   &gt; [1,1] for paramagnetic states</span>
+                       <span class="c1">#   &gt; [0,1] for ferromagnetic states</span>
+                       <span class="c1">#   &gt; [1,0] for antiphase states</span>
+                       <span class="c1">#   &gt; [None,None] for states with no analytical solutions</span>
+    <span class="n">anni_params</span> <span class="o">=</span> <span class="p">[]</span>   <span class="c1"># Array of parameters [N, L, K]</span>
+    
+    <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="n">K_states</span><span class="p">:</span>
+        <span class="k">for</span> <span class="n">l</span> <span class="ow">in</span> <span class="n">L_states</span><span class="p">:</span>
+            <span class="n">anni_params</span><span class="o">.</span><span class="n">append</span><span class="p">([</span><span class="n">N</span><span class="p">,</span><span class="n">l</span><span class="p">,</span><span class="n">k</span><span class="p">])</span> 
+            <span class="n">Hs</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">get_H</span><span class="p">(</span><span class="nb">int</span><span class="p">(</span><span class="n">N</span><span class="p">),</span> <span class="nb">float</span><span class="p">(</span><span class="n">l</span><span class="p">),</span> <span class="nb">float</span><span class="p">(</span><span class="n">k</span><span class="p">),</span> <span class="n">ring</span><span class="p">))</span>
+            
+            <span class="c1"># Append the known labels (phases of the model)</span>
+            <span class="k">if</span> <span class="n">k</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="k">if</span> <span class="n">l</span> <span class="o">&lt;</span> <span class="mi">1</span><span class="p">:</span>
+                    <span class="n">labels</span><span class="o">.</span><span class="n">append</span><span class="p">([</span><span class="mi">0</span><span class="p">,</span><span class="mi">1</span><span class="p">])</span> <span class="c1"># Ferromagnetic</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="n">labels</span><span class="o">.</span><span class="n">append</span><span class="p">([</span><span class="mi">1</span><span class="p">,</span><span class="mi">1</span><span class="p">])</span> <span class="c1"># Paramagnetic</span>
+            <span class="k">elif</span> <span class="n">l</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="k">if</span> <span class="n">k</span> <span class="o">&lt;</span> <span class="o">-</span><span class="mf">.5</span><span class="p">:</span>
+                    <span class="n">labels</span><span class="o">.</span><span class="n">append</span><span class="p">([</span><span class="mi">1</span><span class="p">,</span><span class="mi">0</span><span class="p">])</span> <span class="c1"># Antiphase</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="n">labels</span><span class="o">.</span><span class="n">append</span><span class="p">([</span><span class="mi">0</span><span class="p">,</span><span class="mi">1</span><span class="p">])</span> <span class="c1"># Ferromagnetic</span>
+                
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">labels</span><span class="o">.</span><span class="n">append</span><span class="p">([</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span><span class="o">-</span><span class="mi">1</span><span class="p">])</span>
+    
+    <span class="c1"># Array of indices for the order of states to train through VQE</span>
+    <span class="c1">#     INDICES                RECYCLE RULE</span>
+    <span class="c1"># +--------------+       +--------------+</span>
+    <span class="c1"># | 4  9  14  19 |       | 4  5  14  15 |</span>
+    <span class="c1"># | 3  8  13  18 |       | 3  6  13  16 |</span>
+    <span class="c1"># | 2  7  12  17 |  ==&gt;  | 2  7  12  17 |</span>
+    <span class="c1"># | 1  6  11  16 |       | 1  8  11  18 |</span>
+    <span class="c1"># | 0  5  10  15 |       | 0  9  10  19 |</span>
+    <span class="c1"># +--------------+       +--------------+</span>
+    <span class="n">recycle_rule</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="n">k</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="k">while</span> <span class="n">k</span> <span class="o">&lt;</span> <span class="n">n_states</span><span class="p">:</span>
+        <span class="n">recycle_rule</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">k</span><span class="o">*</span><span class="n">n_states</span><span class="p">,</span> <span class="p">(</span><span class="n">k</span><span class="o">+</span><span class="mi">1</span><span class="p">)</span><span class="o">*</span><span class="n">n_states</span><span class="p">)</span> <span class="p">)</span>
+        <span class="n">k</span> <span class="o">+=</span> <span class="mi">1</span>
+        <span class="k">if</span> <span class="n">k</span> <span class="o">&gt;=</span> <span class="n">n_states</span><span class="p">:</span>
+            <span class="k">break</span>
+        <span class="n">recycle_rule</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">((</span><span class="n">k</span><span class="o">+</span><span class="mi">1</span><span class="p">)</span><span class="o">*</span><span class="n">n_states</span> <span class="o">-</span> <span class="mi">1</span><span class="p">,</span> <span class="n">k</span><span class="o">*</span><span class="n">n_states</span> <span class="o">-</span> <span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">)</span> <span class="p">)</span>
+        <span class="n">k</span> <span class="o">+=</span> <span class="mi">1</span>
+        
+    <span class="k">return</span> <span class="n">Hs</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">labels</span><span class="p">),</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">recycle_rule</span><span class="p">)</span><span class="o">.</span><span class="n">flatten</span><span class="p">(),</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">anni_params</span><span class="p">),</span> <span class="n">n_states</span></div>
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2022, Saverio Monaco.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

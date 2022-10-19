@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PhaseEstimation.circuits &mdash; PhaseEstimationThroughQML 1.0.0 documentation</title>
+      <link rel="stylesheet" href="../../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../../_static/css/theme.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="../../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script data-url_root="../../" id="documentation_options" src="../../_static/documentation_options.js"></script>
+        <script src="../../_static/jquery.js"></script>
+        <script src="../../_static/underscore.js"></script>
+        <script src="../../_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script src="../../_static/doctools.js"></script>
+    <script src="../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+            <a href="../../index.html" class="icon icon-home"> PhaseEstimationThroughQML
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <!-- Local TOC -->
+              <div class="local-toc"></div>
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../index.html">PhaseEstimationThroughQML</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../index.html" class="icon icon-home"></a> &raquo;</li>
+          <li><a href="../index.html">Module code</a> &raquo;</li>
+      <li>PhaseEstimation.circuits</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for PhaseEstimation.circuits</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot; This module implements base circuit layouts for all the models used&quot;&quot;&quot;</span>
+<span class="kn">import</span> <span class="nn">pennylane</span> <span class="k">as</span> <span class="nn">qml</span>
+<span class="kn">from</span> <span class="nn">pennylane</span> <span class="kn">import</span> <span class="n">numpy</span> <span class="k">as</span> <span class="n">np</span>
+
+<span class="kn">from</span> <span class="nn">typing</span> <span class="kn">import</span> <span class="n">Tuple</span><span class="p">,</span> <span class="n">List</span>
+<span class="kn">from</span> <span class="nn">numbers</span> <span class="kn">import</span> <span class="n">Number</span>
+<span class="c1">##############</span>
+
+<div class="viewcode-block" id="wall_gate"><a class="viewcode-back" href="../../PhaseEstimation.html#PhaseEstimation.circuits.wall_gate">[docs]</a><span class="k">def</span> <span class="nf">wall_gate</span><span class="p">(</span><span class="n">active_wires</span> <span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">int</span><span class="p">],</span> <span class="n">gate</span> <span class="p">:</span> <span class="n">qml</span><span class="o">.</span><span class="n">operation</span><span class="o">.</span><span class="n">Operator</span><span class="p">,</span> <span class="n">params</span> <span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">Number</span><span class="p">]</span> <span class="o">=</span> <span class="p">[],</span> <span class="n">index</span> <span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">0</span><span class="p">,</span> <span class="n">samerot</span> <span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Apply rotations for all the wires (active_wires)</span>
+<span class="sd">    </span>
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    active_wires : np.ndarray</span>
+<span class="sd">        Array of the wires to apply the rotations to</span>
+<span class="sd">    gate : qml.ops.qubit.parametric_ops</span>
+<span class="sd">        Qubit operator to apply</span>
+<span class="sd">    params : list</span>
+<span class="sd">        List of parameters of the whole circuit</span>
+<span class="sd">    index : int</span>
+<span class="sd">        Starting index for this block of operators</span>
+<span class="sd">    samerot : bool</span>
+<span class="sd">        if True -&gt; The rotations are not independet of each other but the same</span>
+<span class="sd">    </span>
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    int</span>
+<span class="sd">        Updated index value</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">params</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">samerot</span><span class="p">:</span>
+            <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">spin</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">active_wires</span><span class="p">):</span>
+                <span class="n">gate</span><span class="p">(</span><span class="n">params</span><span class="p">[</span><span class="n">index</span> <span class="o">+</span> <span class="n">i</span><span class="p">],</span> <span class="n">wires</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">spin</span><span class="p">)</span> <span class="p">)</span>
+            <span class="k">return</span> <span class="n">index</span> <span class="o">+</span> <span class="n">i</span> <span class="o">+</span> <span class="mi">1</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">for</span> <span class="n">spin</span> <span class="ow">in</span> <span class="n">active_wires</span><span class="p">:</span>
+                <span class="n">gate</span><span class="p">(</span><span class="n">params</span><span class="p">[</span><span class="n">index</span><span class="p">],</span> <span class="n">wires</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">spin</span><span class="p">)</span> <span class="p">)</span>
+            <span class="k">return</span> <span class="n">index</span> <span class="o">+</span> <span class="mi">1</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">for</span> <span class="n">spin</span> <span class="ow">in</span> <span class="n">active_wires</span><span class="p">:</span>
+            <span class="n">gate</span><span class="p">(</span><span class="n">wires</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">spin</span><span class="p">)</span> <span class="p">)</span>
+        <span class="k">return</span> <span class="n">index</span></div>
+    
+<div class="viewcode-block" id="wall_cgate_serial"><a class="viewcode-back" href="../../PhaseEstimation.html#PhaseEstimation.circuits.wall_cgate_serial">[docs]</a><span class="k">def</span> <span class="nf">wall_cgate_serial</span><span class="p">(</span><span class="n">active_wires</span> <span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">int</span><span class="p">],</span> <span class="n">cgate</span> <span class="p">:</span> <span class="n">qml</span><span class="o">.</span><span class="n">operation</span><span class="o">.</span><span class="n">Operator</span><span class="p">,</span> <span class="n">params</span> <span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">Number</span><span class="p">]</span> <span class="o">=</span> <span class="p">[],</span> <span class="n">index</span> <span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">0</span><span class="p">,</span> <span class="n">going_down</span> <span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Apply drop-down controlled rotations for all the wires (active_wires)</span>
+<span class="sd">    </span>
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    active_wires : np.ndarray</span>
+<span class="sd">        Array of the wires to apply the rotations to</span>
+<span class="sd">    cgate : Pennylane gate (parametrized or not)</span>
+<span class="sd">        Qubit controlled operator to apply</span>
+<span class="sd">    params : list</span>
+<span class="sd">        List of parameters of the whole circuit</span>
+<span class="sd">    index : int</span>
+<span class="sd">        Starting index for this block of operators</span>
+<span class="sd">    going_down : bool</span>
+<span class="sd">        if True -&gt; top - down, if False -&gt; down - top</span>
+<span class="sd">    </span>
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    int</span>
+<span class="sd">        Updated index value</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">params</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="p">(</span><span class="n">spin</span><span class="p">,</span> <span class="n">spin_next</span><span class="p">)</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="nb">zip</span><span class="p">(</span><span class="n">active_wires</span><span class="p">,</span> <span class="n">active_wires</span><span class="p">[</span><span class="mi">1</span><span class="p">:])):</span>
+            <span class="k">if</span> <span class="n">going_down</span><span class="p">:</span>
+                <span class="n">cgate</span><span class="p">(</span><span class="n">params</span><span class="p">[</span><span class="n">index</span> <span class="o">+</span> <span class="n">i</span><span class="p">],</span> <span class="n">wires</span><span class="o">=</span><span class="p">[</span><span class="nb">int</span><span class="p">(</span><span class="n">spin</span><span class="p">),</span> <span class="nb">int</span><span class="p">(</span><span class="n">spin_next</span><span class="p">)]</span> <span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">cgate</span><span class="p">(</span><span class="n">params</span><span class="p">[</span><span class="n">index</span> <span class="o">+</span> <span class="n">i</span><span class="p">],</span> <span class="n">wires</span><span class="o">=</span><span class="p">[</span><span class="nb">int</span><span class="p">(</span><span class="n">spin_next</span><span class="p">),</span> <span class="nb">int</span><span class="p">(</span><span class="n">spin</span><span class="p">)]</span> <span class="p">)</span>
+        <span class="k">return</span> <span class="n">index</span> <span class="o">+</span> <span class="n">i</span> <span class="o">+</span> <span class="mi">1</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">for</span> <span class="n">spin</span><span class="p">,</span> <span class="n">spin_next</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">active_wires</span><span class="p">,</span> <span class="n">active_wires</span><span class="p">[</span><span class="mi">1</span><span class="p">:]):</span>
+            <span class="k">if</span> <span class="n">going_down</span><span class="p">:</span>
+                <span class="n">cgate</span><span class="p">(</span><span class="n">wires</span><span class="o">=</span><span class="p">[</span><span class="nb">int</span><span class="p">(</span><span class="n">spin</span><span class="p">),</span> <span class="nb">int</span><span class="p">(</span><span class="n">spin_next</span><span class="p">)]</span> <span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">cgate</span><span class="p">(</span><span class="n">wires</span><span class="o">=</span><span class="p">[</span><span class="nb">int</span><span class="p">(</span><span class="n">spin_next</span><span class="p">),</span> <span class="nb">int</span><span class="p">(</span><span class="n">spin</span><span class="p">)]</span> <span class="p">)</span>
+        <span class="k">return</span> <span class="n">index</span></div>
+    
+<div class="viewcode-block" id="wall_cgate_all"><a class="viewcode-back" href="../../PhaseEstimation.html#PhaseEstimation.circuits.wall_cgate_all">[docs]</a><span class="k">def</span> <span class="nf">wall_cgate_all</span><span class="p">(</span><span class="n">active_wires</span> <span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">int</span><span class="p">],</span> <span class="n">cgate</span> <span class="p">:</span> <span class="n">qml</span><span class="o">.</span><span class="n">operation</span><span class="o">.</span><span class="n">Operator</span><span class="p">,</span> <span class="n">params</span> <span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">Number</span><span class="p">]</span> <span class="o">=</span> <span class="p">[],</span> <span class="n">index</span> <span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">0</span><span class="p">,</span> <span class="n">going_down</span> <span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Apply controlled rotations across all the wires (active_wires)</span>
+<span class="sd">    </span>
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    active_wires : np.ndarray</span>
+<span class="sd">        Array of the wires to apply the rotations to</span>
+<span class="sd">    cgate : Pennylane gate (parametrized or not)</span>
+<span class="sd">        Qubit controlled operator to apply</span>
+<span class="sd">    params : list</span>
+<span class="sd">        List of parameters of the whole circuit</span>
+<span class="sd">    index : int</span>
+<span class="sd">        Starting index for this block of operators</span>
+<span class="sd">    going_down : bool</span>
+<span class="sd">        if True -&gt; top - down, if False -&gt; down - top</span>
+<span class="sd">    </span>
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    int</span>
+<span class="sd">        Updated index value</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">params</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="n">i</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">spin</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">active_wires</span><span class="p">):</span>
+            <span class="k">for</span> <span class="n">spin_next</span> <span class="ow">in</span> <span class="n">active_wires</span><span class="p">[</span><span class="n">k</span><span class="o">+</span><span class="mi">1</span><span class="p">:]:</span>
+                <span class="k">if</span> <span class="n">going_down</span><span class="p">:</span>
+                    <span class="n">cgate</span><span class="p">(</span><span class="n">params</span><span class="p">[</span><span class="n">index</span> <span class="o">+</span> <span class="n">i</span><span class="p">],</span> <span class="n">wires</span><span class="o">=</span><span class="p">[</span><span class="nb">int</span><span class="p">(</span><span class="n">spin</span><span class="p">),</span> <span class="nb">int</span><span class="p">(</span><span class="n">spin_next</span><span class="p">)]</span> <span class="p">)</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="n">cgate</span><span class="p">(</span><span class="n">params</span><span class="p">[</span><span class="n">index</span> <span class="o">+</span> <span class="n">i</span><span class="p">],</span> <span class="n">wires</span><span class="o">=</span><span class="p">[</span><span class="nb">int</span><span class="p">(</span><span class="n">spin_next</span><span class="p">),</span> <span class="nb">int</span><span class="p">(</span><span class="n">spin</span><span class="p">)]</span> <span class="p">)</span>
+                <span class="n">i</span> <span class="o">+=</span> <span class="mi">1</span>
+        <span class="k">return</span> <span class="n">index</span> <span class="o">+</span> <span class="n">i</span> <span class="o">+</span> <span class="mi">1</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">spin</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">active_wires</span><span class="p">):</span>
+            <span class="k">for</span> <span class="n">spin_next</span> <span class="ow">in</span> <span class="n">active_wires</span><span class="p">[</span><span class="n">k</span><span class="o">+</span><span class="mi">1</span><span class="p">:]:</span>
+                <span class="k">if</span> <span class="n">going_down</span><span class="p">:</span>
+                    <span class="n">cgate</span><span class="p">(</span><span class="n">wires</span><span class="o">=</span><span class="p">[</span><span class="nb">int</span><span class="p">(</span><span class="n">spin</span><span class="p">),</span> <span class="nb">int</span><span class="p">(</span><span class="n">spin_next</span><span class="p">)]</span> <span class="p">)</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="n">cgate</span><span class="p">(</span><span class="n">wires</span><span class="o">=</span><span class="p">[</span><span class="nb">int</span><span class="p">(</span><span class="n">spin_next</span><span class="p">),</span> <span class="nb">int</span><span class="p">(</span><span class="n">spin</span><span class="p">)]</span> <span class="p">)</span>
+        <span class="k">return</span> <span class="n">index</span></div>
+
+<div class="viewcode-block" id="wall_cgate_nextneighbour"><a class="viewcode-back" href="../../PhaseEstimation.html#PhaseEstimation.circuits.wall_cgate_nextneighbour">[docs]</a><span class="k">def</span> <span class="nf">wall_cgate_nextneighbour</span><span class="p">(</span><span class="n">active_wires</span> <span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">int</span><span class="p">],</span> <span class="n">cgate</span> <span class="p">:</span> <span class="n">qml</span><span class="o">.</span><span class="n">operation</span><span class="o">.</span><span class="n">Operator</span><span class="p">,</span> <span class="n">params</span> <span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">Number</span><span class="p">]</span> <span class="o">=</span> <span class="p">[],</span> <span class="n">index</span> <span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">0</span><span class="p">,</span> <span class="n">going_down</span> <span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Apply drop-down controlled rotations establishing next-neighbour entanglement</span>
+<span class="sd">    </span>
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    active_wires : np.ndarray</span>
+<span class="sd">        Array of the wires to apply the rotations to</span>
+<span class="sd">    cgate : Pennylane gate (parametrized or not)</span>
+<span class="sd">        Qubit controlled operator to apply</span>
+<span class="sd">    params : list</span>
+<span class="sd">        List of parameters of the whole circuit</span>
+<span class="sd">    index : int</span>
+<span class="sd">        Starting index for this block of operators</span>
+<span class="sd">    going_down : bool</span>
+<span class="sd">        if True -&gt; top - down, if False -&gt; down - top</span>
+<span class="sd">    </span>
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    int</span>
+<span class="sd">        Updated index value</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">params</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="p">(</span><span class="n">spin</span><span class="p">,</span> <span class="n">spin_next</span><span class="p">)</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="nb">zip</span><span class="p">(</span><span class="n">active_wires</span><span class="p">,</span> <span class="n">active_wires</span><span class="p">[</span><span class="mi">2</span><span class="p">:])):</span>
+            <span class="k">if</span> <span class="n">going_down</span><span class="p">:</span>
+                <span class="n">cgate</span><span class="p">(</span><span class="n">params</span><span class="p">[</span><span class="n">index</span> <span class="o">+</span> <span class="n">i</span><span class="p">],</span> <span class="n">wires</span><span class="o">=</span><span class="p">[</span><span class="nb">int</span><span class="p">(</span><span class="n">spin</span><span class="p">),</span> <span class="nb">int</span><span class="p">(</span><span class="n">spin_next</span><span class="p">)]</span> <span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">cgate</span><span class="p">(</span><span class="n">params</span><span class="p">[</span><span class="n">index</span> <span class="o">+</span> <span class="n">i</span><span class="p">],</span> <span class="n">wires</span><span class="o">=</span><span class="p">[</span><span class="nb">int</span><span class="p">(</span><span class="n">spin_next</span><span class="p">),</span> <span class="nb">int</span><span class="p">(</span><span class="n">spin</span><span class="p">)]</span> <span class="p">)</span>
+        <span class="k">return</span> <span class="n">index</span> <span class="o">+</span> <span class="n">i</span> <span class="o">+</span> <span class="mi">1</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">for</span> <span class="n">spin</span><span class="p">,</span> <span class="n">spin_next</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">active_wires</span><span class="p">,</span> <span class="n">active_wires</span><span class="p">[</span><span class="mi">2</span><span class="p">:]):</span>
+            <span class="k">if</span> <span class="n">going_down</span><span class="p">:</span>
+                <span class="n">cgate</span><span class="p">(</span><span class="n">wires</span><span class="o">=</span><span class="p">[</span><span class="nb">int</span><span class="p">(</span><span class="n">spin</span><span class="p">),</span> <span class="nb">int</span><span class="p">(</span><span class="n">spin_next</span><span class="p">)]</span> <span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">cgate</span><span class="p">(</span><span class="n">wires</span><span class="o">=</span><span class="p">[</span><span class="nb">int</span><span class="p">(</span><span class="n">spin_next</span><span class="p">),</span> <span class="nb">int</span><span class="p">(</span><span class="n">spin</span><span class="p">)]</span> <span class="p">)</span>
+        <span class="k">return</span> <span class="n">index</span></div>
+
+<div class="viewcode-block" id="circuit_ID9"><a class="viewcode-back" href="../../PhaseEstimation.html#PhaseEstimation.circuits.circuit_ID9">[docs]</a><span class="k">def</span> <span class="nf">circuit_ID9</span><span class="p">(</span><span class="n">active_wires</span> <span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">int</span><span class="p">],</span> <span class="n">params</span> <span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">Number</span><span class="p">],</span> <span class="n">index</span> <span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">0</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Basic block for VQE</span>
+<span class="sd">    </span>
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    active_wires : np.ndarray</span>
+<span class="sd">        Array of the wires to apply the rotations to</span>
+<span class="sd">    params : list</span>
+<span class="sd">        List of parameters of the whole circuit</span>
+<span class="sd">    index : int</span>
+<span class="sd">        Starting index for this block of operators</span>
+<span class="sd">        </span>
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    int</span>
+<span class="sd">        Updated index value</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">wall_gate</span><span class="p">(</span><span class="n">active_wires</span><span class="p">,</span> <span class="n">qml</span><span class="o">.</span><span class="n">Hadamard</span><span class="p">)</span>
+    <span class="n">wall_cgate_serial</span><span class="p">(</span><span class="n">active_wires</span><span class="p">,</span> <span class="n">qml</span><span class="o">.</span><span class="n">CNOT</span><span class="p">)</span>
+    <span class="n">index</span> <span class="o">=</span> <span class="n">wall_gate</span><span class="p">(</span><span class="n">active_wires</span><span class="p">,</span> <span class="n">qml</span><span class="o">.</span><span class="n">RY</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">index</span><span class="p">)</span>
+    
+    <span class="k">return</span> <span class="n">index</span></div>
+
+<div class="viewcode-block" id="pooling"><a class="viewcode-back" href="../../PhaseEstimation.html#PhaseEstimation.circuits.pooling">[docs]</a><span class="k">def</span> <span class="nf">pooling</span><span class="p">(</span><span class="n">active_wires</span> <span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">int</span><span class="p">],</span> <span class="n">qmlrot_func</span> <span class="p">:</span> <span class="n">qml</span><span class="o">.</span><span class="n">operation</span><span class="o">.</span><span class="n">Operator</span><span class="p">,</span> <span class="n">params</span> <span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">Number</span><span class="p">],</span> <span class="n">index</span> <span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">0</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="n">List</span><span class="p">[</span><span class="nb">int</span><span class="p">]]:</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Pooling block for the QCNN</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    active_wires : np.ndarray</span>
+<span class="sd">        Array of wires that are not measured during a previous pooling</span>
+<span class="sd">    qmlrot_func : function</span>
+<span class="sd">        Pennylane Gate function to apply</span>
+<span class="sd">    params: np.ndarray</span>
+<span class="sd">        Array of parameters/rotation for the circuit</span>
+<span class="sd">    index: int</span>
+<span class="sd">        Index from where to pick the elements from the params array</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    int</span>
+<span class="sd">        Updated starting index of params array for further rotations</span>
+<span class="sd">    np.ndarray</span>
+<span class="sd">        Updated array of active wires (not measured)</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">isodd</span> <span class="o">=</span> <span class="kc">True</span>
+    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">active_wires</span><span class="p">)</span><span class="o">%</span><span class="mi">2</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="n">isodd</span> <span class="o">=</span> <span class="kc">False</span>
+    <span class="k">for</span> <span class="n">wire_meas</span><span class="p">,</span> <span class="n">wire_next</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">active_wires</span><span class="p">[</span><span class="mi">0</span><span class="p">::</span><span class="mi">2</span><span class="p">],</span> <span class="n">active_wires</span><span class="p">[</span><span class="mi">1</span><span class="p">::</span><span class="mi">2</span><span class="p">]):</span>
+        <span class="n">m_0</span> <span class="o">=</span> <span class="n">qml</span><span class="o">.</span><span class="n">measure</span><span class="p">(</span><span class="nb">int</span><span class="p">(</span><span class="n">wire_meas</span><span class="p">))</span>
+        <span class="n">qml</span><span class="o">.</span><span class="n">cond</span><span class="p">(</span><span class="n">m_0</span> <span class="o">==</span> <span class="mi">0</span><span class="p">,</span> <span class="n">qmlrot_func</span><span class="p">)(</span><span class="n">params</span><span class="p">[</span><span class="n">index</span><span class="p">],</span> <span class="n">wires</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="n">wire_next</span><span class="p">))</span>
+        <span class="n">qml</span><span class="o">.</span><span class="n">cond</span><span class="p">(</span><span class="n">m_0</span> <span class="o">==</span> <span class="mi">1</span><span class="p">,</span> <span class="n">qmlrot_func</span><span class="p">)(</span><span class="n">params</span><span class="p">[</span><span class="n">index</span> <span class="o">+</span> <span class="mi">1</span><span class="p">],</span> <span class="n">wires</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="n">wire_next</span><span class="p">))</span>
+        <span class="n">index</span> <span class="o">=</span> <span class="n">index</span> <span class="o">+</span> <span class="mi">2</span>
+
+        <span class="c1"># Removing measured wires from active_wires:</span>
+        <span class="n">active_wires</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">delete</span><span class="p">(</span><span class="n">active_wires</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">active_wires</span> <span class="o">==</span> <span class="n">wire_meas</span><span class="p">))</span>
+
+    <span class="c1"># ---- &gt; If the number of wires is odd, the last wires is not pooled</span>
+    <span class="c1">#        so we apply a gate</span>
+    <span class="k">if</span> <span class="n">isodd</span><span class="p">:</span>
+        <span class="n">qmlrot_func</span><span class="p">(</span><span class="n">params</span><span class="p">[</span><span class="n">index</span><span class="p">],</span> <span class="n">wires</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">active_wires</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">])</span> <span class="p">)</span>
+        <span class="n">index</span> <span class="o">=</span> <span class="n">index</span> <span class="o">+</span> <span class="mi">1</span>
+    
+    <span class="k">return</span> <span class="n">index</span><span class="p">,</span> <span class="n">active_wires</span></div>
+
+<div class="viewcode-block" id="convolution"><a class="viewcode-back" href="../../PhaseEstimation.html#PhaseEstimation.circuits.convolution">[docs]</a><span class="k">def</span> <span class="nf">convolution</span><span class="p">(</span><span class="n">active_wires</span> <span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">int</span><span class="p">],</span> <span class="n">params</span> <span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">Number</span><span class="p">],</span> <span class="n">index</span> <span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">0</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Convolution block for the QCNN</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    active_wires : np.ndarray</span>
+<span class="sd">        Array of wires that are not measured during a previous pooling</span>
+<span class="sd">    params: np.ndarray</span>
+<span class="sd">        Array of parameters/rotation for the circuit</span>
+<span class="sd">    index: int</span>
+<span class="sd">        Index from where to pick the elements from the params array</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    int</span>
+<span class="sd">        Updated starting index of params array for further rotations</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">active_wires</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">:</span>
+         <span class="c1"># Rotation Groups 2</span>
+        <span class="k">for</span> <span class="n">wire1</span><span class="p">,</span> <span class="n">wire2</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">active_wires</span><span class="p">[</span><span class="mi">0</span><span class="p">::</span><span class="mi">2</span><span class="p">],</span><span class="n">active_wires</span><span class="p">[</span><span class="mi">1</span><span class="p">::</span><span class="mi">2</span><span class="p">]):</span>
+            <span class="n">qml</span><span class="o">.</span><span class="n">RX</span><span class="p">(</span><span class="n">params</span><span class="p">[</span><span class="n">index</span><span class="p">],</span> <span class="n">wires</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">wire1</span><span class="p">))</span>
+            <span class="n">qml</span><span class="o">.</span><span class="n">RX</span><span class="p">(</span><span class="n">params</span><span class="p">[</span><span class="n">index</span><span class="p">],</span> <span class="n">wires</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">wire2</span><span class="p">))</span>
+            <span class="n">index</span> <span class="o">+=</span> <span class="mi">1</span>
+
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">active_wires</span><span class="p">)</span><span class="o">%</span><span class="mi">2</span> <span class="o">!=</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="n">qml</span><span class="o">.</span><span class="n">RX</span><span class="p">(</span><span class="n">params</span><span class="p">[</span><span class="n">index</span><span class="p">],</span> <span class="n">wires</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">active_wires</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]))</span>
+            <span class="n">index</span> <span class="o">+=</span> <span class="mi">1</span>
+            
+        <span class="c1"># CNOTS Groups 1</span>
+        <span class="k">for</span> <span class="n">wire1</span><span class="p">,</span> <span class="n">wire2</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">active_wires</span><span class="p">[</span><span class="mi">1</span><span class="p">::</span><span class="mi">2</span><span class="p">],</span><span class="n">active_wires</span><span class="p">[</span><span class="mi">2</span><span class="p">::</span><span class="mi">2</span><span class="p">]):</span>
+            <span class="n">qml</span><span class="o">.</span><span class="n">CNOT</span><span class="p">(</span><span class="n">wires</span> <span class="o">=</span> <span class="p">[</span><span class="nb">int</span><span class="p">(</span><span class="n">wire1</span><span class="p">),</span><span class="nb">int</span><span class="p">(</span><span class="n">wire2</span><span class="p">)])</span>
+            
+        <span class="n">qml</span><span class="o">.</span><span class="n">Barrier</span><span class="p">()</span>
+        
+        <span class="c1"># Rotation Groups 1</span>
+        <span class="n">qml</span><span class="o">.</span><span class="n">RX</span><span class="p">(</span><span class="n">params</span><span class="p">[</span><span class="n">index</span><span class="p">],</span> <span class="n">wires</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">active_wires</span><span class="p">[</span><span class="mi">0</span><span class="p">]))</span>
+        <span class="n">index</span> <span class="o">+=</span> <span class="mi">1</span>
+        <span class="k">for</span> <span class="n">wire1</span><span class="p">,</span> <span class="n">wire2</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">active_wires</span><span class="p">[</span><span class="mi">1</span><span class="p">::</span><span class="mi">2</span><span class="p">],</span><span class="n">active_wires</span><span class="p">[</span><span class="mi">2</span><span class="p">::</span><span class="mi">2</span><span class="p">]):</span>
+            <span class="n">qml</span><span class="o">.</span><span class="n">RX</span><span class="p">(</span><span class="n">params</span><span class="p">[</span><span class="n">index</span><span class="p">],</span> <span class="n">wires</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">wire1</span><span class="p">))</span>
+            <span class="n">qml</span><span class="o">.</span><span class="n">RX</span><span class="p">(</span><span class="n">params</span><span class="p">[</span><span class="n">index</span><span class="p">],</span> <span class="n">wires</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">wire2</span><span class="p">))</span>
+            <span class="n">index</span> <span class="o">+=</span> <span class="mi">1</span>
+
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">active_wires</span><span class="p">)</span><span class="o">%</span><span class="mi">2</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="n">qml</span><span class="o">.</span><span class="n">RX</span><span class="p">(</span><span class="n">params</span><span class="p">[</span><span class="n">index</span><span class="p">],</span> <span class="n">wires</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">active_wires</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]))</span>
+            <span class="n">index</span> <span class="o">+=</span> <span class="mi">1</span>
+            
+        <span class="c1"># CNOTS Groups 2</span>
+        <span class="k">for</span> <span class="n">wire1</span><span class="p">,</span> <span class="n">wire2</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">active_wires</span><span class="p">[</span><span class="mi">0</span><span class="p">::</span><span class="mi">2</span><span class="p">],</span><span class="n">active_wires</span><span class="p">[</span><span class="mi">1</span><span class="p">::</span><span class="mi">2</span><span class="p">]):</span>
+            <span class="n">qml</span><span class="o">.</span><span class="n">CNOT</span><span class="p">(</span><span class="n">wires</span> <span class="o">=</span> <span class="p">[</span><span class="nb">int</span><span class="p">(</span><span class="n">wire1</span><span class="p">),</span><span class="nb">int</span><span class="p">(</span><span class="n">wire2</span><span class="p">)])</span>
+        
+        <span class="n">index</span> <span class="o">=</span> <span class="n">wall_gate</span><span class="p">(</span><span class="n">active_wires</span><span class="p">,</span> <span class="n">qml</span><span class="o">.</span><span class="n">RY</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">index</span><span class="p">)</span>
+        
+    <span class="k">return</span> <span class="n">index</span></div>
+
+<div class="viewcode-block" id="encoder_block"><a class="viewcode-back" href="../../PhaseEstimation.html#PhaseEstimation.circuits.encoder_block">[docs]</a><span class="k">def</span> <span class="nf">encoder_block</span><span class="p">(</span><span class="n">wires</span> <span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">int</span><span class="p">],</span> <span class="n">wires_trash</span> <span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">int</span><span class="p">],</span> <span class="n">shift</span> <span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">0</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Applies CX between a wire and a trash wire for each</span>
+<span class="sd">    wire/trashwire</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    wires : np.ndarray</span>
+<span class="sd">        Array of the indexes of non-trash qubits</span>
+<span class="sd">    wires_trash : np.ndarray</span>
+<span class="sd">        Array of the indexes of trash qubits (np.1dsetdiff(np.arange(N),wires))</span>
+<span class="sd">    shift : int</span>
+<span class="sd">        Shift value for connections between wires and trash wires</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># Connection between trash wires</span>
+    <span class="n">trash_uniques</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">wire</span> <span class="ow">in</span> <span class="n">wires_trash</span><span class="p">:</span>
+        <span class="n">wire_target</span> <span class="o">=</span> <span class="n">wire</span> <span class="o">+</span> <span class="mi">1</span> <span class="o">+</span> <span class="n">shift</span>
+        
+        <span class="k">if</span> <span class="n">wire_target</span> <span class="o">&gt;</span> <span class="n">wires_trash</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]:</span>
+            <span class="n">wire_target</span> <span class="o">=</span> <span class="n">wires_trash</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">+</span> <span class="n">wire_target</span> <span class="o">-</span> <span class="n">wires_trash</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">-</span><span class="mi">1</span>
+        <span class="k">if</span> <span class="n">wire_target</span> <span class="o">==</span> <span class="n">wire</span><span class="p">:</span>
+            <span class="n">wire_target</span> <span class="o">+=</span> <span class="mi">1</span>
+        <span class="k">if</span> <span class="n">wire_target</span> <span class="o">&gt;</span> <span class="n">wires_trash</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]:</span>
+            <span class="n">wire_target</span> <span class="o">=</span> <span class="n">wires_trash</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">+</span> <span class="n">wire_target</span> <span class="o">-</span> <span class="n">wires_trash</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">-</span><span class="mi">1</span>
+            
+        <span class="k">if</span> <span class="ow">not</span> <span class="p">[</span><span class="n">wire_target</span><span class="p">,</span> <span class="n">wire</span><span class="p">]</span> <span class="ow">in</span> <span class="n">trash_uniques</span><span class="p">:</span>
+            <span class="n">qml</span><span class="o">.</span><span class="n">CZ</span><span class="p">(</span><span class="n">wires</span><span class="o">=</span><span class="p">[</span><span class="nb">int</span><span class="p">(</span><span class="n">wire</span><span class="p">),</span> <span class="nb">int</span><span class="p">(</span><span class="n">wire_target</span><span class="p">)])</span>
+            <span class="n">trash_uniques</span><span class="o">.</span><span class="n">append</span><span class="p">([</span><span class="n">wire</span><span class="p">,</span><span class="n">wire_target</span><span class="p">])</span>
+
+    <span class="c1"># Connections wires -&gt; trash_wires</span>
+    <span class="k">for</span> <span class="n">idx</span><span class="p">,</span> <span class="n">wire</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">wires</span><span class="p">):</span>
+        <span class="n">trash_idx</span> <span class="o">=</span> <span class="n">idx</span> <span class="o">+</span> <span class="n">shift</span>
+        
+        <span class="k">while</span> <span class="n">trash_idx</span> <span class="o">&gt;</span> <span class="nb">len</span><span class="p">(</span><span class="n">wires_trash</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="n">trash_idx</span> <span class="o">=</span> <span class="n">trash_idx</span> <span class="o">-</span> <span class="nb">len</span><span class="p">(</span><span class="n">wires_trash</span><span class="p">)</span>
+        
+        <span class="n">qml</span><span class="o">.</span><span class="n">CNOT</span><span class="p">(</span><span class="n">wires</span><span class="o">=</span><span class="p">[</span><span class="nb">int</span><span class="p">(</span><span class="n">wire</span><span class="p">),</span> <span class="nb">int</span><span class="p">(</span><span class="n">wires_trash</span><span class="p">[</span><span class="n">trash_idx</span><span class="p">])])</span></div>
+
+<div class="viewcode-block" id="encoder_circuit"><a class="viewcode-back" href="../../PhaseEstimation.html#PhaseEstimation.circuits.encoder_circuit">[docs]</a><span class="k">def</span> <span class="nf">encoder_circuit</span><span class="p">(</span><span class="n">wires</span> <span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">int</span><span class="p">],</span> <span class="n">wires_trash</span> <span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">int</span><span class="p">],</span> <span class="n">active_wires</span> <span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">int</span><span class="p">],</span> <span class="n">params</span> <span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">Number</span><span class="p">],</span> <span class="n">index</span> <span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">0</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Encoder circuit for encoder and autoencoder</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    wires : np.ndarray</span>
+<span class="sd">        Array of the indexes of non-trash qubits</span>
+<span class="sd">    wires_trash : np.ndarray</span>
+<span class="sd">        Array of the indexes of trash qubits (np.1dsetdiff(np.arange(N),wires))</span>
+<span class="sd">    active_wires : np.ndarray</span>
+<span class="sd">        wires U wires_trash</span>
+<span class="sd">    params: np.ndarray</span>
+<span class="sd">        Array of parameters/rotation for the circuit</span>
+<span class="sd">    index: int</span>
+<span class="sd">        Index from where to pick the elements from the params array</span>
+<span class="sd">        </span>
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    int</span>
+<span class="sd">        Updated index value</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">index</span> <span class="o">=</span> <span class="n">wall_gate</span><span class="p">(</span><span class="n">active_wires</span><span class="p">,</span> <span class="n">qml</span><span class="o">.</span><span class="n">RY</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">index</span> <span class="o">=</span> <span class="n">index</span><span class="p">)</span>
+    <span class="k">for</span> <span class="n">shift</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">3</span><span class="p">):</span>
+        <span class="n">encoder_block</span><span class="p">(</span><span class="n">wires</span><span class="p">,</span> <span class="n">wires_trash</span><span class="p">,</span> <span class="n">shift</span><span class="p">)</span>
+        <span class="n">qml</span><span class="o">.</span><span class="n">Barrier</span><span class="p">()</span>
+        <span class="n">index</span> <span class="o">=</span> <span class="n">wall_gate</span><span class="p">(</span><span class="n">active_wires</span><span class="p">,</span> <span class="n">qml</span><span class="o">.</span><span class="n">RZ</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">index</span> <span class="o">=</span> <span class="n">index</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">index</span></div>
+    
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2022, Saverio Monaco.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

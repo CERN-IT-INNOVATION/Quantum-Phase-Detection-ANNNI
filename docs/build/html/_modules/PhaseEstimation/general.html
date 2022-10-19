@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PhaseEstimation.general &mdash; PhaseEstimationThroughQML 1.0.0 documentation</title>
+      <link rel="stylesheet" href="../../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../../_static/css/theme.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="../../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script data-url_root="../../" id="documentation_options" src="../../_static/documentation_options.js"></script>
+        <script src="../../_static/jquery.js"></script>
+        <script src="../../_static/underscore.js"></script>
+        <script src="../../_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script src="../../_static/doctools.js"></script>
+    <script src="../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+            <a href="../../index.html" class="icon icon-home"> PhaseEstimationThroughQML
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <!-- Local TOC -->
+              <div class="local-toc"></div>
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../index.html">PhaseEstimationThroughQML</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../index.html" class="icon icon-home"></a> &raquo;</li>
+          <li><a href="../index.html">Module code</a> &raquo;</li>
+      <li>PhaseEstimation.general</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for PhaseEstimation.general</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;Module for generic functions for other modules&quot;&quot;&quot;</span>
+<span class="kn">import</span> <span class="nn">pennylane</span> <span class="k">as</span> <span class="nn">qml</span>
+<span class="kn">from</span> <span class="nn">pennylane</span> <span class="kn">import</span> <span class="n">numpy</span> <span class="k">as</span> <span class="n">np</span>
+<span class="kn">import</span> <span class="nn">jax</span>
+<span class="kn">import</span> <span class="nn">jax.numpy</span> <span class="k">as</span> <span class="nn">jnp</span>
+
+<span class="kn">from</span> <span class="nn">typing</span> <span class="kn">import</span> <span class="n">List</span><span class="p">,</span> <span class="n">Tuple</span><span class="p">,</span> <span class="n">Union</span>
+<span class="kn">from</span> <span class="nn">numbers</span> <span class="kn">import</span> <span class="n">Number</span>
+
+<div class="viewcode-block" id="linalgeigh"><a class="viewcode-back" href="../../PhaseEstimation.html#PhaseEstimation.general.linalgeigh">[docs]</a><span class="k">def</span> <span class="nf">linalgeigh</span><span class="p">(</span><span class="n">mat_H</span> <span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="n">Number</span><span class="p">]])</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="n">List</span><span class="p">[</span><span class="n">Number</span><span class="p">]]:</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Apply jax np.linalg.eigh on a matrix,</span>
+<span class="sd">    to be jitted</span>
+<span class="sd">    </span>
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    mat_H : np.ndarray</span>
+<span class="sd">        Input matrix to apply np.linalg.eigh</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    np.ndarray</span>
+<span class="sd">        Array of eigenvalues (not sorted)</span>
+<span class="sd">    np.ndarray</span>
+<span class="sd">        Array of relative eigenvectors</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># Compute eigenvalues and eigenvectors</span>
+    <span class="n">eigval</span><span class="p">,</span> <span class="n">eigvec</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">eigh</span><span class="p">(</span><span class="n">mat_H</span><span class="p">)</span>
+    
+    <span class="k">return</span> <span class="n">eigval</span><span class="p">,</span> <span class="n">eigvec</span></div>
+
+<span class="n">j_linalgeigh</span> <span class="o">=</span> <span class="n">jax</span><span class="o">.</span><span class="n">jit</span><span class="p">(</span><span class="n">linalgeigh</span><span class="p">)</span>
+
+<div class="viewcode-block" id="geteigvals"><a class="viewcode-back" href="../../PhaseEstimation.html#PhaseEstimation.general.geteigvals">[docs]</a><span class="k">def</span> <span class="nf">geteigvals</span><span class="p">(</span><span class="n">qml_H</span> <span class="p">:</span> <span class="n">qml</span><span class="o">.</span><span class="n">ops</span><span class="o">.</span><span class="n">qubit</span><span class="o">.</span><span class="n">hamiltonian</span><span class="o">.</span><span class="n">Hamiltonian</span><span class="p">,</span> <span class="n">states</span> <span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">int</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="n">Number</span><span class="p">]:</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Function for getting the energy values of an Ising Hamiltonian</span>
+<span class="sd">    using the jitted jnp.linalg.eigh function</span>
+<span class="sd">        </span>
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    qml_H : pennylane.ops.qubit.hamiltonian.Hamiltonian</span>
+<span class="sd">        Pennylane Hamiltonian of the state</span>
+<span class="sd">    states : list</span>
+<span class="sd">        List of energy levels desired</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    list</span>
+<span class="sd">        List of energy values</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    
+    <span class="c1"># Get the matricial for of the hamiltonian</span>
+    <span class="c1"># and convert it to float32 </span>
+    <span class="c1"># This type of hamiltonians are always real</span>
+    <span class="n">mat_H</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">real</span><span class="p">(</span><span class="n">qml</span><span class="o">.</span><span class="n">matrix</span><span class="p">(</span><span class="n">qml_H</span><span class="p">))</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">single</span><span class="p">)</span>
+    
+    <span class="c1"># Compute sorted eigenvalues with jitted function</span>
+    <span class="n">eigvals</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">sort</span><span class="p">(</span><span class="n">j_linalgeigh</span><span class="p">(</span><span class="n">mat_H</span><span class="p">)[</span><span class="mi">0</span><span class="p">])</span>
+    
+    <span class="k">return</span> <span class="p">[</span><span class="n">eigvals</span><span class="p">[</span><span class="n">k</span><span class="p">]</span> <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="n">states</span><span class="p">]</span></div>
+
+<div class="viewcode-block" id="get_H_eigval_eigvec"><a class="viewcode-back" href="../../PhaseEstimation.html#PhaseEstimation.general.get_H_eigval_eigvec">[docs]</a><span class="k">def</span> <span class="nf">get_H_eigval_eigvec</span><span class="p">(</span><span class="n">qml_H</span> <span class="p">:</span> <span class="n">qml</span><span class="o">.</span><span class="n">ops</span><span class="o">.</span><span class="n">qubit</span><span class="o">.</span><span class="n">hamiltonian</span><span class="o">.</span><span class="n">Hamiltonian</span><span class="p">,</span> <span class="n">en_lvl</span> <span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="n">Number</span><span class="p">]],</span> <span class="n">Number</span><span class="p">,</span> <span class="n">List</span><span class="p">[</span><span class="n">Number</span><span class="p">]]:</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Function for getting the energy value and state of an Ising Hamiltonian</span>
+<span class="sd">    using the jitted jnp.linalg.eigh function</span>
+<span class="sd">        </span>
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    qml_H : pennylane.ops.qubit.hamiltonian.Hamiltonian</span>
+<span class="sd">        Pennylane Hamiltonian of the state</span>
+<span class="sd">    en_lvl : int</span>
+<span class="sd">        Energy level desired</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    np.ndarray</span>
+<span class="sd">        Matricial encoding of the Hamiltonian</span>
+<span class="sd">    float</span>
+<span class="sd">        Value of the energy level</span>
+<span class="sd">    np.ndarray</span>
+<span class="sd">        Eigenstate of the energy level</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    
+    <span class="c1"># Get the matricial for of the hamiltonian</span>
+    <span class="c1"># and convert it to float32 </span>
+    <span class="c1"># This type of hamiltonians are always real</span>
+    <span class="n">mat_H</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">real</span><span class="p">(</span><span class="n">qml</span><span class="o">.</span><span class="n">matrix</span><span class="p">(</span><span class="n">qml_H</span><span class="p">))</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">single</span><span class="p">)</span>
+    
+    <span class="c1"># Compute sorted eigenvalues with jitted function</span>
+    <span class="n">eigvals</span><span class="p">,</span> <span class="n">eigvecs</span> <span class="o">=</span> <span class="n">j_linalgeigh</span><span class="p">(</span><span class="n">mat_H</span><span class="p">)</span>
+    
+    <span class="n">psi</span> <span class="o">=</span> <span class="n">eigvecs</span><span class="p">[:,</span><span class="n">jnp</span><span class="o">.</span><span class="n">argsort</span><span class="p">(</span><span class="n">eigvals</span><span class="p">)[</span><span class="n">en_lvl</span><span class="p">]]</span>
+    <span class="n">en</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">sort</span><span class="p">(</span><span class="n">eigvals</span><span class="p">)[</span><span class="n">en_lvl</span><span class="p">]</span>
+    
+    <span class="k">return</span> <span class="n">mat_H</span><span class="p">,</span> <span class="n">en</span><span class="p">,</span> <span class="n">psi</span></div>
+
+<div class="viewcode-block" id="psi_outer"><a class="viewcode-back" href="../../PhaseEstimation.html#PhaseEstimation.general.psi_outer">[docs]</a><span class="k">def</span> <span class="nf">psi_outer</span><span class="p">(</span><span class="n">psi</span> <span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">Number</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="n">Number</span><span class="p">]]:</span>
+    <span class="k">return</span> <span class="n">jnp</span><span class="o">.</span><span class="n">outer</span><span class="p">(</span><span class="n">jnp</span><span class="o">.</span><span class="n">conj</span><span class="p">(</span><span class="n">psi</span><span class="p">),</span> <span class="n">psi</span><span class="p">)</span></div>
+
+<span class="n">j_psi_outer</span> <span class="o">=</span> <span class="n">jax</span><span class="o">.</span><span class="n">jit</span><span class="p">(</span><span class="n">psi_outer</span><span class="p">)</span>
+<span class="n">jv_psi_outer</span> <span class="o">=</span> <span class="n">jax</span><span class="o">.</span><span class="n">jit</span><span class="p">(</span><span class="n">jax</span><span class="o">.</span><span class="n">vmap</span><span class="p">(</span><span class="n">psi_outer</span><span class="p">))</span>
+
+<div class="viewcode-block" id="get_VQE_params"><a class="viewcode-back" href="../../PhaseEstimation.html#PhaseEstimation.general.get_VQE_params">[docs]</a><span class="k">def</span> <span class="nf">get_VQE_params</span><span class="p">(</span><span class="n">qml_H</span> <span class="p">:</span> <span class="n">qml</span><span class="o">.</span><span class="n">ops</span><span class="o">.</span><span class="n">qubit</span><span class="o">.</span><span class="n">hamiltonian</span><span class="o">.</span><span class="n">Hamiltonian</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="n">Number</span><span class="p">]],</span> <span class="n">Number</span><span class="p">]:</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Function for getting all the training parameter for the VQE</span>
+<span class="sd">    algorithm</span>
+<span class="sd">        </span>
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    qml_H : pennylane.ops.qubit.hamiltonian.Hamiltonian</span>
+<span class="sd">        Pennylane Hamiltonian of the state</span>
+<span class="sd">        </span>
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    np.ndarray</span>
+<span class="sd">        Matricial encoding of the Hamiltonian</span>
+<span class="sd">    float</span>
+<span class="sd">        Ground-state energy value</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    
+    <span class="c1"># Get the matricial for of the hamiltonian</span>
+    <span class="c1"># and convert it to float32 </span>
+    <span class="c1"># This type of hamiltonians are always real</span>
+    <span class="n">mat_H</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">real</span><span class="p">(</span><span class="n">qml</span><span class="o">.</span><span class="n">matrix</span><span class="p">(</span><span class="n">qml_H</span><span class="p">))</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">single</span><span class="p">)</span>
+    
+    <span class="c1"># Compute sorted eigenvalues with jitted function</span>
+    <span class="n">eigvals</span> <span class="o">=</span> <span class="n">j_linalgeigh</span><span class="p">(</span><span class="n">mat_H</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+    
+    <span class="n">en0</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">sort</span><span class="p">(</span><span class="n">eigvals</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+    
+    <span class="k">return</span> <span class="n">jnp</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">mat_H</span><span class="p">]),</span> <span class="n">en0</span></div>
+
+<div class="viewcode-block" id="get_VQD_params"><a class="viewcode-back" href="../../PhaseEstimation.html#PhaseEstimation.general.get_VQD_params">[docs]</a><span class="k">def</span> <span class="nf">get_VQD_params</span><span class="p">(</span><span class="n">qml_H</span> <span class="p">:</span> <span class="n">qml</span><span class="o">.</span><span class="n">ops</span><span class="o">.</span><span class="n">qubit</span><span class="o">.</span><span class="n">hamiltonian</span><span class="o">.</span><span class="n">Hamiltonian</span><span class="p">,</span> <span class="n">beta</span> <span class="p">:</span> <span class="n">Number</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="n">Number</span><span class="p">]],</span> <span class="n">List</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="n">Number</span><span class="p">]],</span> <span class="n">Number</span><span class="p">]:</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Function for getting all the training parameter for the VQD</span>
+<span class="sd">    algorithm for finding the first excited state</span>
+<span class="sd">        </span>
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    qml_H : pennylane.ops.qubit.hamiltonian.Hamiltonian</span>
+<span class="sd">        Pennylane Hamiltonian of the Ising Model</span>
+<span class="sd">        </span>
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    np.ndarray</span>
+<span class="sd">        Matricial encoding of the Hamiltonian</span>
+<span class="sd">    np.ndarray</span>
+<span class="sd">        Effective Hamiltonian of VQD algorithm</span>
+<span class="sd">    float</span>
+<span class="sd">        Excited-state energy value</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    
+    <span class="c1"># Get the matricial for of the hamiltonian</span>
+    <span class="c1"># and convert it to float32 </span>
+    <span class="c1"># This type of hamiltonians are always real</span>
+    <span class="n">mat_H</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">real</span><span class="p">(</span><span class="n">qml</span><span class="o">.</span><span class="n">matrix</span><span class="p">(</span><span class="n">qml_H</span><span class="p">))</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">single</span><span class="p">)</span>
+    
+    <span class="c1"># Compute sorted eigenvalues with jitted function</span>
+    <span class="n">eigvals</span><span class="p">,</span> <span class="n">eigvecs</span> <span class="o">=</span> <span class="n">j_linalgeigh</span><span class="p">(</span><span class="n">mat_H</span><span class="p">)</span>
+    
+    <span class="n">psi0</span> <span class="o">=</span> <span class="n">eigvecs</span><span class="p">[:,</span><span class="n">jnp</span><span class="o">.</span><span class="n">argsort</span><span class="p">(</span><span class="n">eigvals</span><span class="p">)[</span><span class="mi">0</span><span class="p">]]</span>
+    <span class="n">en_ex</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">sort</span><span class="p">(</span><span class="n">eigvals</span><span class="p">)[</span><span class="mi">1</span><span class="p">]</span>
+    
+    <span class="k">return</span> <span class="n">jnp</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">mat_H</span><span class="p">]),</span> <span class="n">jnp</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">mat_H</span> <span class="o">+</span> <span class="n">beta</span> <span class="o">*</span> <span class="n">j_psi_outer</span><span class="p">(</span><span class="n">psi0</span><span class="p">)]),</span> <span class="n">en_ex</span></div>
+
+<div class="viewcode-block" id="paraanti"><a class="viewcode-back" href="../../PhaseEstimation.html#PhaseEstimation.general.paraanti">[docs]</a><span class="k">def</span> <span class="nf">paraanti</span><span class="p">(</span><span class="n">x</span><span class="p">):</span>
+    <span class="k">return</span> <span class="mf">1.05</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">((</span><span class="n">x</span><span class="o">-</span><span class="mf">.5</span><span class="p">)</span><span class="o">*</span><span class="p">(</span><span class="n">x</span><span class="o">-</span><span class="mf">.1</span><span class="p">))</span></div>
+
+<div class="viewcode-block" id="paraferro"><a class="viewcode-back" href="../../PhaseEstimation.html#PhaseEstimation.general.paraferro">[docs]</a><span class="k">def</span> <span class="nf">paraferro</span><span class="p">(</span><span class="n">x</span><span class="p">):</span>
+    <span class="k">return</span> <span class="p">((</span><span class="mi">1</span><span class="o">-</span><span class="n">x</span><span class="p">)</span><span class="o">/</span><span class="n">x</span><span class="p">)</span><span class="o">*</span><span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span> <span class="p">(</span><span class="mi">1</span><span class="o">-</span><span class="mi">3</span><span class="o">*</span><span class="n">x</span><span class="o">+</span><span class="mi">4</span><span class="o">*</span><span class="n">x</span><span class="o">*</span><span class="n">x</span><span class="p">)</span><span class="o">/</span><span class="p">(</span><span class="mi">1</span><span class="o">-</span><span class="n">x</span><span class="p">)</span> <span class="p">)</span> <span class="p">)</span></div>
+
+<div class="viewcode-block" id="b1"><a class="viewcode-back" href="../../PhaseEstimation.html#PhaseEstimation.general.b1">[docs]</a><span class="k">def</span> <span class="nf">b1</span><span class="p">(</span><span class="n">x</span><span class="p">):</span>
+    <span class="k">return</span> <span class="mf">1.05</span> <span class="o">*</span> <span class="p">(</span><span class="n">x</span> <span class="o">-</span> <span class="mf">.5</span><span class="p">)</span></div>
+
+<div class="viewcode-block" id="peshel_emery"><a class="viewcode-back" href="../../PhaseEstimation.html#PhaseEstimation.general.peshel_emery">[docs]</a><span class="k">def</span> <span class="nf">peshel_emery</span><span class="p">(</span><span class="n">x</span><span class="p">):</span>
+    <span class="n">y</span> <span class="o">=</span>  <span class="p">(</span><span class="mi">1</span><span class="o">/</span><span class="p">(</span><span class="mi">4</span><span class="o">*</span><span class="n">x</span><span class="p">))</span> <span class="o">-</span> <span class="n">x</span>
+    
+    <span class="n">y</span><span class="p">[</span><span class="n">y</span><span class="o">&gt;</span><span class="mi">2</span><span class="p">]</span> <span class="o">=</span> <span class="mi">2</span>
+    <span class="k">return</span> <span class="n">y</span></div>
+
+<div class="viewcode-block" id="simple_to_idx"><a class="viewcode-back" href="../../PhaseEstimation.html#PhaseEstimation.general.simple_to_idx">[docs]</a><span class="k">def</span> <span class="nf">simple_to_idx</span><span class="p">(</span><span class="n">simple</span> <span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">side</span> <span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Union</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="kc">None</span><span class="p">]:</span>
+    <span class="k">if</span> <span class="n">simple</span> <span class="o">&lt;=</span> <span class="mi">2</span><span class="o">*</span><span class="n">side</span> <span class="o">-</span> <span class="mi">1</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">simple</span> <span class="o">&lt;=</span> <span class="n">side</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">simple</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">side</span><span class="o">*</span><span class="p">(</span><span class="n">simple</span><span class="o">%</span><span class="n">side</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span> 
+    <span class="k">return</span> <span class="kc">None</span></div>
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2022, Saverio Monaco.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>
