@@ -10,6 +10,11 @@ Welcome to PhaseEstimationThroughQML's documentation!
    :width: 500
    :alt: annnimodel
    :align: center
+   
+.. image:: 6classification.png
+   :width: 500
+   :alt: annnimodel
+   :align: center
 
 .. image:: https://img.shields.io/badge/CERN-CERN%20openlab-blue
    :target: https://openlab.cern/
@@ -17,6 +22,12 @@ Welcome to PhaseEstimationThroughQML's documentation!
 .. image:: https://zenodo.org/badge/DOI/10.5281/zenodo.7090343.svg
    :target: https://doi.org/10.5281/zenodo.7090343
 
+.. toctree::
+   :maxdepth: 2
+   :caption: Contents:
+
+   introduction
+   
 .. toctree::
    :maxdepth: 2
    :caption: Contents:
