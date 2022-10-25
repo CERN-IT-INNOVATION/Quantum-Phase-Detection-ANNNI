@@ -16,7 +16,7 @@ Package build on Pennylane for the Quantum Phase Detection of the ANNNI Model th
 4. ```cd Quantum-Phase-Detection-ANNNI```
 
 ### Install required packages
-5. ```pip install ./src```
+5. ```pip install ./```
 
 ### (Optional) To run on GPU
 6. ```pip install --upgrade pip```

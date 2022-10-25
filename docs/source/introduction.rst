@@ -22,7 +22,7 @@ Install required packages
 
 .. code-block:: bash
 
-   pip install ./src
+   pip install ./
 
 (Optional) To run on GPU
 
