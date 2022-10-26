@@ -15,6 +15,7 @@ Create and activate the environment
 Clone and move to Project folder
 
 .. code-block:: bash
+
    git clone https://github.com/SaverioMonaco/Quantum-Phase-Detection-ANNNI.git
    cd Quantum-Phase-Detection-ANNNI
 
@@ -22,7 +23,7 @@ Install required packages
 
 .. code-block:: bash
 
-   pip install ./
+   pip install .
 
 (Optional) To run on GPU
 
@@ -33,7 +34,7 @@ Install required packages
 
 Examples
 --------
-The `/notebooks <https://github.com/CERN-IT-INNOVATION/Quantum-Phase-Detection-ANNNI/tree/main/notebooks>` folder contains many examples for all the use-cases as Jupyter Notebooks
+The `/notebooks <https://github.com/CERN-IT-INNOVATION/Quantum-Phase-Detection-ANNNI/tree/main/notebooks>`_ folder contains many examples for all the use-cases as Jupyter Notebooks
 
 
 How to cite
