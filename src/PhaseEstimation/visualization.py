@@ -296,7 +296,6 @@ def show_QCNN_classification1D(qcnnclass, train_index):
         c=colors_test,
     )
 
-
 def show_compression_ANNNI(encclass, trainingpoint=False, label=False, plot3d=False):
     """
     Shows result of compression of the Anomaly Detector
@@ -351,9 +350,10 @@ def show_compression_ANNNI(encclass, trainingpoint=False, label=False, plot3d=Fa
 
         if type(trainingpoint) == int:
             train_x = trainingpoint // sidex
-            train_y = side - trainingpoint % sidey
+            train_y = sidey - trainingpoint % sidey
             if train_x == 0:
-                train_x += 1.5
+                train_x += 1
+                print(train_x)
             if train_y == sidey:
                 train_y -= 2
 
