@@ -57,7 +57,7 @@ def get_H(
 
 
 def build_Hs(
-    N: int, n_states: int, ring: bool = False
+    N: int, n_hs: int, n_kappas: int, h_max: float = 2, kappa_max: float = 1, ring: bool = False
 ) -> Tuple[
     List[qml.ops.qubit.hamiltonian.Hamiltonian],
     List[List[int]],
@@ -67,16 +67,22 @@ def build_Hs(
 ]:
     """
     Sets up np.ndarray of pennylane Hamiltonians with different parameters
-    total_states = n_states * n_states
-    K can have n_states values from 0 to -1 (NB the sign)
-    L can have n_states values from 0 to +2
+    total_states = n_kappas * n_hs
+    kappa can have n_kappas values from 0 to - |kappa_max| (NB the sign)
+    h     can have n_hs values from 0 to h_max
     
     Parameters
     ----------
     N : int
         Number of spins of the Ising Chain
-    n_states : int
-        Number of Hamiltonians to generate
+    n_hs : int
+        Number of different values of h the hamiltonian can have
+    h_max : float
+        Maximum value of h, the values will range from 0 to h_max
+    n_kappas : int
+        Number of different values of kappa the hamiltonian can have
+    kappa_max : float
+        Maximum value of kappa, the values will range from 0 to - |kappa_max|
     ring : bool
         If False, system has open-boundaries condition
         
@@ -94,8 +100,8 @@ def build_Hs(
     """
 
     # Set up arrays of the parameters K and Ls
-    K_states = np.linspace(0, -1, n_states)
-    L_states = np.linspace(0, 2, n_states)
+    kappa_values = np.linspace(0, -np.abs(kappa_max), n_kappas)
+    h_values     = np.linspace(0,  h_max, n_hs)
 
     Hs = []  # Array of the Pennylane hamiltonians
     labels = []  # Array of the labels:
@@ -105,19 +111,19 @@ def build_Hs(
     #   > [None,None] for states with no analytical solutions
     anni_params = []  # Array of parameters [N, L, K]
 
-    for k in K_states:
-        for l in L_states:
-            anni_params.append([N, l, k])
-            Hs.append(get_H(int(N), float(l), float(k), ring))
+    for kappa in kappa_values:
+        for h in h_values:
+            anni_params.append([N, h, kappa])
+            Hs.append(get_H(int(N), float(h), float(kappa), ring))
 
             # Append the known labels (phases of the model)
-            if k == 0:
-                if l < 1:
+            if kappa == 0:
+                if h < 1:
                     labels.append([0, 1])  # Ferromagnetic
                 else:
                     labels.append([1, 1])  # Paramagnetic
-            elif l == 0:
-                if k < -0.5:
+            elif h == 0:
+                if kappa < -0.5:
                     labels.append([1, 0])  # Antiphase
                 else:
                     labels.append([0, 1])  # Ferromagnetic
@@ -135,19 +141,26 @@ def build_Hs(
     # | 0  5  10  15 |       | 0  9  10  19 |
     # +--------------+       +--------------+
     recycle_rule = []
-    k = 0
-    while k < n_states:
-        recycle_rule.append(np.arange(k * n_states, (k + 1) * n_states))
-        k += 1
-        if k >= n_states:
+    k_index = 0
+    while k_index < n_kappas:
+        # k_index = 0 (going up)
+        # [0, 1, 2, 3, 4]
+        recycle_rule.append(np.arange(k_index * n_hs, (k_index + 1) * n_hs).astype(int))
+        k_index += 1
+        if k_index >= n_kappas:
             break
-        recycle_rule.append(np.arange((k + 1) * n_states - 1, k * n_states - 1, -1))
-        k += 1
+        # k_index = 1 (going down)
+        # [9, 8, 7, 6, 5]
+        recycle_rule.append(np.arange((k_index + 1) * n_hs - 1, k_index * n_hs - 1, -1).astype(int))
+        k_index += 1
+        if k_index >= n_kappas:
+            break
 
     return (
         Hs,
         np.array(labels),
         np.array(recycle_rule).flatten(),
         np.array(anni_params),
-        n_states,
+        n_hs * n_kappas,
+        n_hs, n_kappas, h_max, kappa_max,
     )

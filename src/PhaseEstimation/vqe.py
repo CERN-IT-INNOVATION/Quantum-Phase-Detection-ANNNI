@@ -88,6 +88,38 @@ def circuit_ising2(N: int, params: List[Number]) -> int:
 
     return index
 
+def circuit_ising3(N: int, params: List[Number]) -> int:
+    """
+    ????????????????????'
+
+    Parameters
+    ----------
+    N : int
+        Number of qubits
+    params: np.ndarray
+        Array of parameters/rotation for the circuit
+
+    Returns
+    -------
+    int
+        Total number of parameters needed to build this circuit
+    """
+    # No wire will be measured until the end, the array of active
+    # wire will correspont to np.arange(N) throughout the whole circuit
+    active_wires = np.arange(N)
+    index = 0
+    index = circuits.wall_gate(active_wires, qml.RY, params, index)
+    index = circuits.wall_gate(active_wires, qml.RX, params, index)
+    qml.Barrier()
+    for _ in range(3):
+        index = circuits.circuit_ID9(active_wires, params, index)
+        qml.Barrier()
+
+    index = circuits.wall_gate(active_wires, qml.RX, params, index)
+    index = circuits.wall_gate(active_wires, qml.RY, params, index)
+
+    return index
+
 
 class vqe:
     def __init__(self, Hs: hamiltonians.hamiltonian, circuit: Callable):
@@ -207,16 +239,17 @@ class vqe:
             Neighbouring indexes
         """
 
-        side = self.Hs.side
+        side_x = self.Hs.n_kappas
+        side_y = self.Hs.n_hs
 
-        neighbours = np.array([idx + 1, idx - 1, idx + side, idx - side])
+        neighbours = np.array([idx + 1, idx - 1, idx + side_y, idx - side_y])
         neighbours = np.delete(
             neighbours, np.logical_not(np.isin(neighbours, self.Hs.recycle_rule))
         )
 
-        if (idx + 1) % side == 0 and idx != self.Hs.n_states - 1:
+        if (idx + 1) % side_y == 0 and idx != self.Hs.n_states - 1:
             neighbours = np.delete(neighbours, 0)
-        if (idx) % side == 0 and idx != 0:
+        if (idx) % side_y == 0 and idx != 0:
             neighbours = np.delete(neighbours, 1)
 
         return neighbours
@@ -492,31 +525,12 @@ class vqe:
 
         if not isinstance(filename, str):
             raise TypeError("Invalid name for file")
-
-        # Check if the VQE was trained for excited states aswell:
-        excited = True
-        try:
-            self.vqe_params1
-        except:
-            excited = False
-
-        if not excited:
-            things_to_save = [
+            
+        things_to_save = [
                 self.Hs,
                 self.vqe_params0,
                 self.vqe_e0,
                 self.true_e0,
-                self.circuit_fun,
-            ]
-        else:
-            things_to_save = [
-                self.Hs,
-                self.vqe_params0,
-                self.vqe_e0,
-                self.true_e0,
-                self.vqe_params1,
-                self.vqe_e1,
-                self.true_e1,
                 self.circuit_fun,
             ]
 
@@ -559,6 +573,8 @@ def load_vqe(filename: str) -> vqe:
             circuit_fun,
         ) = things_to_load
         loaded_vqe = vqe(Hs, circuit_fun)
+
+        warnings.warn("Outdated VQE: VQD parameters loaded")
         loaded_vqe.vqe_params1 = vqe_params1
         loaded_vqe.vqe_e1 = vqe_e1
         loaded_vqe.true_e1 = true_e1

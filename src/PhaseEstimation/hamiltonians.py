@@ -32,7 +32,9 @@ class hamiltonian:
             self.labels,
             self.recycle_rule,
             self.model_params,
-            self.side,
+            self.n_states,
+            self.n_hs,  self.n_kappas,
+            self.h_max, self.kappa_max
         ) = self.func(**kwargs)
 
         self.n_states = len(self.qml_Hs)

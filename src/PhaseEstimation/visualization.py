@@ -19,16 +19,45 @@ rc("font", **{"family": "sans-serif", "sans-serif": ["Helvetica"]})
 rc("font", **{"family": "serif", "serif": ["Computer Modern Roman"]})
 rc("text", usetex=True)
 
-
 def getlines(
     func: Callable, xrange: List[float], side: int, color: str, res: int = 100
 ):
     """
     Plot function func from xrange[0] to xrange[1]
+    This first function assumes your parameter ranges are
+    > h     : [ 0, 2]
+    > kappa : [ 0,-1]
+
     """
     xs = np.linspace(xrange[0], xrange[1], res)
     ys = func(xs)
     plt.plot(side * xs - 0.5, side - ys * side / 2 - 0.5, color=color, alpha=0.8)
+
+def getlines_from_vqe(
+    vqeclass, func: Callable, xrange: List[float], color: str, res: int = 100
+):
+    """
+    Plot function func from xrange[0] to xrange[1]
+    This function uses the VQE class to plot the function 
+    according to the vqe ranges of its parameters
+    """
+
+    # Get information from vqeclass for plotting
+    # (func needs to be resized)
+    side_x = vqeclass.Hs.n_kappas
+    side_y = vqeclass.Hs.n_hs
+    max_x  = vqeclass.Hs.kappa_max
+
+    yrange = [0, vqeclass.Hs.h_max]
+    
+    xs = np.linspace(xrange[0], xrange[1], res)
+    ys = func(xs)
+
+    ys[ys > yrange[1]] = yrange[1]
+    
+    corrected_xs = (side_x * xs / max_x - 0.5)
+
+    plt.plot(corrected_xs, side_y - ys * side_y / yrange[1] - 0.5, color=color, alpha=0.8)
 
 
 def show_VQE_isingchain(vqeclass: vqe.vqe, excited: bool = False):
@@ -91,7 +120,7 @@ def show_VQE_isingchain(vqeclass: vqe.vqe, excited: bool = False):
     plt.tight_layout()
 
 
-def show_VQE_annni(vqeclass, log_heatmap=False, excited=False, plot3d=True):
+def show_VQE_annni(vqeclass, log_heatmap = False, plot3d=True):
     """
     Shows results of a trained VQE run:
     > VQE enegies plot
@@ -99,42 +128,24 @@ def show_VQE_annni(vqeclass, log_heatmap=False, excited=False, plot3d=True):
     > Final relative errors
     > Mean Squared difference between final neighbouring states
     """
-    side = vqeclass.Hs.side
+    sidex = vqeclass.Hs.n_kappas
+    sidey = vqeclass.Hs.n_hs
+    max_x = vqeclass.Hs.kappa_max
+    max_y = vqeclass.Hs.h_max
 
-    # Exit if the VQE was not trained for excited states
-    if excited:
-        try:
-            vqeclass.vqe_params1
-        except:
-            return
+    trues = np.reshape(vqeclass.true_e0, (sidex, sidey))
+    preds = np.reshape(vqeclass.vqe_e0,  (sidex, sidey))
 
-    if not excited:
-        trues = np.reshape(vqeclass.true_e0, (side, side))
-        preds = np.reshape(vqeclass.vqe_e0, (side, side))
-    else:
-        trues = np.reshape(vqeclass.true_e1, (side, side))
-        preds = np.reshape(vqeclass.vqe_e1, (side, side))
-        trues_gs = np.reshape(vqeclass.true_e0, (side, side))
-
-    x = np.linspace(1, 0, side)
-    y = np.linspace(0, 2, side)
+    x = np.linspace(-max_x, 0, sidex)
+    y = np.linspace(0, max_y, sidey)
 
     if plot3d:
-        if excited:
-            fig = go.Figure(
-                data=[
-                    go.Surface(opacity=0.2, colorscale="Reds", z=trues, x=x, y=y),
-                    go.Surface(opacity=1, colorscale="Blues", z=preds, x=x, y=y),
-                    go.Surface(opacity=0.6, colorscale="plasma", z=trues_gs, x=x, y=y),
-                ]
-            )
-        else:
-            fig = go.Figure(
-                data=[
-                    go.Surface(opacity=0.2, colorscale="Reds", z=trues, x=x, y=y),
-                    go.Surface(opacity=1, colorscale="Blues", z=preds, x=x, y=y),
-                ]
-            )
+        fig = go.Figure(
+            data=[
+                go.Surface(opacity=0.2, colorscale="Reds", z=trues, x=x, y=y),
+                go.Surface(opacity=1, colorscale="Blues", z=preds, x=x, y=y),
+            ]
+        )
 
         fig.update_layout(height=500)
         fig.show()
@@ -156,7 +167,7 @@ def show_VQE_annni(vqeclass, log_heatmap=False, excited=False, plot3d=True):
         colors = np.vstack((colors_good, colors_bad))
         cmap_acc = LinearSegmentedColormap.from_list("accuracies", colors)
 
-        plt.imshow(accuracy, cmap=cmap_acc)
+        plt.imshow(accuracy, cmap=cmap_acc, aspect = vqeclass.Hs.n_kappas / vqeclass.Hs.n_hs)
         plt.clim(0, 0.05)
         plt.colorbar(fraction=0.04)
     else:
@@ -176,17 +187,19 @@ def show_VQE_annni(vqeclass, log_heatmap=False, excited=False, plot3d=True):
     plt.ylabel(r"$B/\,J_1$")
     plt.xlabel(r"$J_1/\,J_2$")
 
+    ticks_x = [-.5 , vqeclass.Hs.n_kappas/4 - .5, vqeclass.Hs.n_kappas/2 - .5 , 3*vqeclass.Hs.n_kappas/4 - .5, vqeclass.Hs.n_kappas - .5]
+    ticks_y = [-.5 , vqeclass.Hs.n_hs/4 - .5, vqeclass.Hs.n_hs/2 - .5 , 3*vqeclass.Hs.n_hs/4 - .5, vqeclass.Hs.n_hs - .5]
+
     plt.xticks(
-        ticks=np.linspace(0, side - 1, 5).astype(int),
-        labels=[np.round(k * 1 / 4, 2) for k in range(0, 5)],
+        ticks= ticks_x,
+        labels=[np.round(k * vqeclass.Hs.kappa_max  / 4, 2) for k in range(0, 5)],
     )
     plt.yticks(
-        ticks=np.linspace(0, side - 1, 5).astype(int),
-        labels=[np.round(k * 2 / 4, 2) for k in range(4, -1, -1)],
+        ticks=ticks_y,
+        labels=[np.round(k * vqeclass.Hs.h_max / 4, 2) for k in range(4, -1, -1)],
     )
 
     plt.tight_layout()
-
 
 def show_QCNN_classification1D(qcnnclass, train_index):
     """
@@ -289,7 +302,12 @@ def show_compression_ANNNI(encclass, trainingpoint=False, label=False, plot3d=Fa
     Shows result of compression of the Anomaly Detector
     """
 
-    side = encclass.vqe.Hs.side
+    sidex = encclass.vqe.Hs.n_kappas
+    sidey = encclass.vqe.Hs.n_hs
+    max_x = encclass.vqe.Hs.kappa_max
+    max_y = encclass.vqe.Hs.h_max
+    x = np.linspace(-max_x, 0, sidex)
+    y = np.linspace(0, max_y, sidey)
 
     X = jnp.array(encclass.vqe_params0)
 
@@ -299,16 +317,13 @@ def show_compression_ANNNI(encclass, trainingpoint=False, label=False, plot3d=Fa
 
         return [qml.expval(qml.PauliZ(int(k))) for k in encclass.wires_trash]
 
-    v_encoder_circuit = jax.vmap(lambda x: encoder_circuit(x, encclass.params))
+    v_encoder_circuit = jax.vmap(lambda p: encoder_circuit(p, encclass.params))
 
     exps = (1 - np.sum(v_encoder_circuit(X), axis=1) / 4) / 2
 
-    exps = np.rot90(np.reshape(exps, (side, side)))
+    exps = np.rot90(np.reshape(exps, (sidex, sidey)))
 
     if plot3d:
-        x = np.linspace(1, 0, side)
-        y = np.linspace(0, 2, side)
-
         fig = go.Figure(data=[go.Surface(z=exps, x=x, y=y)])
         fig.update_layout(height=500)
         fig.show()
@@ -319,29 +334,27 @@ def show_compression_ANNNI(encclass, trainingpoint=False, label=False, plot3d=Fa
         # plt.ylabel(r'$h$', fontsize=24)
         plt.xlabel(r"$\kappa$", fontsize=24)
 
-        x = np.linspace(1, 0, side)
-        y = np.linspace(0, 2, side)
+        ticks_x = [-.5 , encclass.vqe.Hs.n_kappas/4 - .5, encclass.vqe.Hs.n_kappas/2 - .5 , 3*encclass.vqe.Hs.n_kappas/4 - .5, encclass.vqe.Hs.n_kappas - .5]
+        ticks_y = [-.5 , encclass.vqe.Hs.n_hs/4 - .5, encclass.vqe.Hs.n_hs/2 - .5 , 3*encclass.vqe.Hs.n_hs/4 - .5, encclass.vqe.Hs.n_hs - .5]
 
         plt.xticks(
-            ticks=np.linspace(0, side - 1, 5).astype(int),
-            labels=[np.round(k * 1 / 4, 2) for k in range(0, 5)],
-            fontsize=18,
+            ticks= ticks_x,
+            labels=[np.round(k * encclass.vqe.Hs.kappa_max  / 4, 2) for k in range(0, 5)],
         )
         plt.yticks(
-            ticks=np.linspace(0, side - 1, 5).astype(int),
-            labels=[np.round(k * 2 / 4, 2) for k in range(4, -1, -1)],
-            fontsize=18,
+            ticks=ticks_y,
+            labels=[np.round(k * encclass.vqe.Hs.h_max / 4, 2) for k in range(4, -1, -1)],
         )
 
-        getlines(qmlgen.paraanti, [0.5, 1 - 1e-5], side, "white", res=100)
-        getlines(qmlgen.paraferro, [1e-5, 0.5], side, "white", res=100)
+        getlines_from_vqe(encclass.vqe, qmlgen.paraanti, [0.5, 1 - 1e-5], "white", res=100)
+        getlines_from_vqe(encclass.vqe, qmlgen.paraferro, [1e-5, 0.5], "white", res=100)
 
         if type(trainingpoint) == int:
-            train_x = trainingpoint // side
-            train_y = side - trainingpoint % side
+            train_x = trainingpoint // sidex
+            train_y = side - trainingpoint % sidey
             if train_x == 0:
                 train_x += 1.5
-            if train_y == side:
+            if train_y == sidey:
                 train_y -= 2
 
             plt.scatter(
@@ -352,8 +365,8 @@ def show_compression_ANNNI(encclass, trainingpoint=False, label=False, plot3d=Fa
                 color="orangered",
                 label=r"Initial state $\left|\psi\right\rangle$",
             )
-            plt.ylim(side - 1, 0)
-            plt.xlim(0, side - 1)
+            plt.ylim(sidey - 1, 0)
+            plt.xlim(0, sidex - 1)
 
             leg = plt.legend(
                 bbox_to_anchor=(1, 1),
@@ -370,8 +383,8 @@ def show_compression_ANNNI(encclass, trainingpoint=False, label=False, plot3d=Fa
         if label:
             plt.figtext(0.23, 0.79, "(" + label + ")", color="black", fontsize=20)
         plt.text(
-            side * 0.5,
-            side * 0.4,
+            sidex * 0.5,
+            sidey * 0.4,
             "para.",
             color="black",
             fontsize=22,
@@ -379,8 +392,8 @@ def show_compression_ANNNI(encclass, trainingpoint=False, label=False, plot3d=Fa
             va="center",
         )
         plt.text(
-            side * 0.18,
-            side * 0.88,
+            sidex * 0.18,
+            sidey * 0.88,
             "ferro.",
             color="white",
             fontsize=22,
@@ -388,8 +401,8 @@ def show_compression_ANNNI(encclass, trainingpoint=False, label=False, plot3d=Fa
             va="center",
         )
         plt.text(
-            side * 0.82,
-            side * 0.88,
+            sidex * 0.82,
+            sidey * 0.88,
             "anti.",
             color="black",
             fontsize=22,
@@ -399,7 +412,6 @@ def show_compression_ANNNI(encclass, trainingpoint=False, label=False, plot3d=Fa
 
         cbar = plt.colorbar()
         cbar.ax.tick_params(labelsize=18)
-
 
 def show_QCNN_classification2D(qcnnclass):
     """
@@ -417,14 +429,16 @@ def show_QCNN_classification2D(qcnnclass):
 
     mask1 = jnp.array(qcnnclass.vqe.Hs.model_params)[:, 1] == 0
     mask2 = jnp.array(qcnnclass.vqe.Hs.model_params)[:, 2] == 0
-
-    ising_1, label_1 = (
+    
+    ising_1, label_1, x1 = (
         qcnnclass.vqe_params[mask1],
         qcnnclass.labels[mask1, :].astype(int),
+        np.arange( len(mask1[mask1 == True]) )
     )
-    ising_2, label_2 = (
+    ising_2, label_2, x2 = (
         qcnnclass.vqe_params[mask2],
         qcnnclass.labels[mask2, :].astype(int),
+        np.arange( len(mask2[mask2 == True]) )
     )
 
     vcircuit = jax.vmap(lambda v: qcnn_circuit_prob(v, qcnnclass.params), in_axes=(0))
@@ -445,12 +459,11 @@ def show_QCNN_classification2D(qcnnclass):
 
     fig, ax = plt.subplots(1, 2, figsize=(20, 6))
 
-    x = np.arange(int(np.sqrt(qcnnclass.n_states)))
     ax[0].grid(True)
-    ax[0].scatter(x, out1_p1, c=c1)
+    ax[0].scatter(x1, out1_p1, c=c1)
     ax[0].set_ylim(-0.1, 1.1)
     ax[1].grid(True)
-    ax[1].scatter(x, out2_p1, c=c1)
+    ax[1].scatter(x1, out2_p1, c=c1)
     ax[1].set_ylim(-0.1, 1.1)
 
     plt.show()
@@ -469,22 +482,18 @@ def show_QCNN_classification2D(qcnnclass):
 
     fig, ax = plt.subplots(1, 2, figsize=(20, 6))
 
-    x = np.arange(int(np.sqrt(qcnnclass.n_states)))
     ax[0].grid(True)
-    ax[0].scatter(x, out1_p2, c=c2)
+    ax[0].scatter(x2, out1_p2, c=c2)
     ax[0].set_ylim(-0.1, 1.1)
     ax[1].grid(True)
-    ax[1].scatter(x, out2_p2, c=c2)
+    ax[1].scatter(x2, out2_p2, c=c2)
     ax[1].set_ylim(-0.1, 1.1)
 
     plt.show()
 
-
 def show_QCNN_classificationANNNI(
     qcnnclass,
     hard_thr=True,
-    lines=False,
-    deltaeline=[],
     train_index=[],
     label=False,
     info=False,
@@ -494,7 +503,8 @@ def show_QCNN_classificationANNNI(
     plt.figure(figsize=(8, 6), dpi=80)
 
     circuit = qcnnclass._vqe_qcnn_circuit
-    side = int(np.sqrt(qcnnclass.n_states))
+    sidex = qcnnclass.vqe.Hs.n_kappas
+    sidey = qcnnclass.vqe.Hs.n_hs
 
     if hard_thr:
 
@@ -524,7 +534,7 @@ def show_QCNN_classificationANNNI(
             ["lightcoral", "skyblue", "black", "palegreen"]
         )
         norm = mpl.colors.BoundaryNorm(np.arange(0, 4), phases.N)
-        plt.imshow(np.rot90(np.reshape(c, (side, side))), cmap=phases, norm=norm)
+        plt.imshow(np.rot90(np.reshape(c, (sidex, sidey))), cmap=phases, norm=norm)
     else:
 
         @qml.qnode(qcnnclass.device, interface="jax")
@@ -543,33 +553,32 @@ def show_QCNN_classificationANNNI(
         myyellow = np.array([300, 270, 0]) / 255
         c = []
 
-        rgb_probs = np.ndarray(shape=(side * side, 3), dtype=float)
+        rgb_probs = np.ndarray(shape=(sidex * sidey, 3), dtype=float)
 
         for i, pred in enumerate(predictions):
             rgb_probs[i] = pred[3] * mygreen + pred[1] * myblue + pred[2] * myyellow
 
-        rgb_probs = np.rot90(np.reshape(rgb_probs, (side, side, 3)))
+        rgb_probs = np.rot90(np.reshape(rgb_probs, (sidex, sidey, 3)))
 
         plt.imshow(rgb_probs, alpha=1)
 
     plt.ylabel(r"$h$", fontsize=24)
     plt.xlabel(r"$\kappa$", fontsize=24)
 
-    x = np.linspace(1, 0, side)
-    y = np.linspace(0, 2, side)
+    ticks_x = [-.5 , qcnnclass.vqe.Hs.n_kappas/4 - .5, qcnnclass.vqe.Hs.n_kappas/2 - .5 , 3*qcnnclass.vqe.Hs.n_kappas/4 - .5, qcnnclass.vqe.Hs.n_kappas - .5]
+    ticks_y = [-.5 , qcnnclass.vqe.Hs.n_hs/4 - .5, qcnnclass.vqe.Hs.n_hs/2 - .5 , 3*qcnnclass.vqe.Hs.n_hs/4 - .5, qcnnclass.vqe.Hs.n_hs - .5]
 
     plt.xticks(
-        ticks=np.linspace(0, side - 1, 5).astype(int),
-        labels=[np.round(k * 1 / 4, 2) for k in range(0, 5)],
-        fontsize=18,
+        ticks= ticks_x,
+        labels=[np.round(k * qcnnclass.vqe.Hs.kappa_max  / 4, 2) for k in range(0, 5)],
     )
     plt.yticks(
-        ticks=np.linspace(0, side - 1, 5).astype(int),
-        labels=[np.round(k * 2 / 4, 2) for k in range(4, -1, -1)],
-        fontsize=18,
+        ticks=ticks_y,
+        labels=[np.round(k * qcnnclass.vqe.Hs.h_max / 4, 2) for k in range(4, -1, -1)],
     )
 
     if len(train_index) > 0:
+        raise Exception('Out of support')
         x_star, y_star = [], []
         for idx in train_index:
             x_star.append(idx // side - 1)
@@ -588,31 +597,22 @@ def show_QCNN_classificationANNNI(
             alpha=1,
             label=r"Training Points $\mathcal{{S}}_U^{14}$",
         )
-        plt.ylim(side - 1, 0)
-        plt.xlim(0, side - 1)
+        plt.ylim(sidey - 1, 0)
+        plt.xlim(0, sidex - 1)
 
-    if len(deltaeline) > 0:
-        plt.plot(
-            [side / 2] * int(side / 2) + (side / 2) * deltaeline,
-            color="fuchsia",
-            lw=2.5,
-            alpha=0.9,
-            label="VQE RG",
-        )
-
-    getlines(qmlgen.paraanti, [0.5, 1], side, "white", res=100)
-    getlines(qmlgen.paraferro, [0, 0.5], side, "white", res=100)
+    getlines_from_vqe(qcnnclass.vqe, qmlgen.paraanti, [0.5, 1], "white", res=100)
+    getlines_from_vqe(qcnnclass.vqe, qmlgen.paraferro, [0, 0.5], "white", res=100)
     if morelines:
-        getlines(qmlgen.peshel_emery, [0, 0.5], side, "cyan", res=100)
-        getlines(qmlgen.b1, [0.5, 1], side, "blue", res=100)
+        getlines_from_vqe(qcnnclass.vqe, qmlgen.peshel_emery, [0, 0.5], "cyan", res=100)
+        getlines_from_vqe(qcnnclass.vqe, qmlgen.b1, [0.5, 1], "blue", res=100)
 
     if label:
         plt.figtext(0.28, 0.79, "(" + label + ")", color="black", fontsize=20)
 
     if info:
         plt.text(
-            side * 0.5,
-            side * 0.4,
+            sidex * 0.5,
+            sidey * 0.4,
             "para.",
             color="black",
             fontsize=20,
@@ -620,8 +620,8 @@ def show_QCNN_classificationANNNI(
             va="center",
         )
         plt.text(
-            side * 0.18,
-            side * 0.88,
+            sidex * 0.18,
+            sidey * 0.88,
             "ferro.",
             color="white",
             fontsize=20,
@@ -629,8 +629,8 @@ def show_QCNN_classificationANNNI(
             va="center",
         )
         plt.text(
-            side * 0.82,
-            side * 0.88,
+            sidex * 0.82,
+            sidey * 0.88,
             "anti.",
             color="black",
             fontsize=20,
