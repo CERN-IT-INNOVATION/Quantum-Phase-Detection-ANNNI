@@ -34,7 +34,7 @@ def vqe_fidelities(Y: List[Number], params: List[Number], q_circuit: Callable) -
     # Vectorize the fidelity function
     v_fidelty = jax.vmap(lambda y, p: vqe_fidelity(y, p, q_circuit), in_axes=(0, 0))
 
-    return jnp.mean(v_fidelty(Y, params))
+    return v_fidelty(Y, params)
 
 
 # QCNN LOSSES

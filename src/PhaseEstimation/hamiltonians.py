@@ -1,7 +1,10 @@
 """ This module implements the base class for spin-models Hamiltonians"""
 
-from typing import Callable
+from PhaseEstimation import general as qmlgen
 
+from tqdm.auto import tqdm
+from typing import Callable
+import numpy as np
 ##############
 
 
@@ -38,3 +41,12 @@ class hamiltonian:
         ) = self.func(**kwargs)
 
         self.n_states = len(self.qml_Hs)
+
+def get_e_psi(Hclass, en_lvl):
+    e_list   = []
+    psi_list = []
+    for H in tqdm(Hclass.qml_Hs):
+        _, e, psi = qmlgen.get_H_eigval_eigvec(H, en_lvl)
+        e_list.append(e), psi_list.append(psi)
+
+    return np.array(e_list), np.array(psi_list)

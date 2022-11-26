@@ -6,9 +6,10 @@ import matplotlib as mpl
 from matplotlib import pyplot as plt
 from matplotlib.colors import LinearSegmentedColormap, LogNorm
 import plotly.graph_objects as go
+from tqdm.auto import tqdm
 
 from PhaseEstimation import general as qmlgen
-from PhaseEstimation import vqe
+from PhaseEstimation import vqe, losses
 
 from typing import List, Callable
 
@@ -34,7 +35,7 @@ def getlines(
     plt.plot(side * xs - 0.5, side - ys * side / 2 - 0.5, color=color, alpha=0.8)
 
 def getlines_from_vqe(
-    vqeclass, func: Callable, xrange: List[float], color: str, res: int = 100
+    vqeclass, func: Callable, xrange: List[float], res: int = 100, **kwargs
 ):
     """
     Plot function func from xrange[0] to xrange[1]
@@ -57,7 +58,7 @@ def getlines_from_vqe(
     
     corrected_xs = (side_x * xs / max_x - 0.5)
 
-    plt.plot(corrected_xs, side_y - ys * side_y / yrange[1] - 0.5, color=color, alpha=0.8)
+    plt.plot(corrected_xs, side_y - ys * side_y / yrange[1] - 0.5, **kwargs)
 
 
 def show_VQE_isingchain(vqeclass: vqe.vqe, excited: bool = False):
@@ -119,8 +120,7 @@ def show_VQE_isingchain(vqeclass: vqe.vqe, excited: bool = False):
 
     plt.tight_layout()
 
-
-def show_VQE_annni(vqeclass, log_heatmap = False, plot3d=True):
+def show_VQE_annni(vqeclass, log_heatmap = False, plot3d=True, phase_lines = False, pe_line = False, info = False):
     """
     Shows results of a trained VQE run:
     > VQE enegies plot
@@ -128,6 +128,7 @@ def show_VQE_annni(vqeclass, log_heatmap = False, plot3d=True):
     > Final relative errors
     > Mean Squared difference between final neighbouring states
     """
+    
     sidex = vqeclass.Hs.n_kappas
     sidey = vqeclass.Hs.n_hs
     max_x = vqeclass.Hs.kappa_max
@@ -150,8 +151,10 @@ def show_VQE_annni(vqeclass, log_heatmap = False, plot3d=True):
         fig.update_layout(height=500)
         fig.show()
 
-    accuracy = np.rot90(np.abs(preds - trues) / np.abs(trues))
+    plt.figure(figsize=(8, 6), dpi=80)
 
+    accuracy = np.rot90(np.abs(preds - trues) / np.abs(trues))
+    
     if not log_heatmap:
         colors_good = np.squeeze(
             np.dstack(
@@ -169,23 +172,18 @@ def show_VQE_annni(vqeclass, log_heatmap = False, plot3d=True):
 
         plt.imshow(accuracy, cmap=cmap_acc, aspect = vqeclass.Hs.n_kappas / vqeclass.Hs.n_hs)
         plt.clim(0, 0.05)
-        plt.colorbar(fraction=0.04)
+        cbar = plt.colorbar(fraction=0.04)
+        cbar.ax.tick_params(labelsize=16) 
     else:
-        colors = np.squeeze(
-            np.dstack(
-                (
-                    np.dstack((np.linspace(0, 1, 75), np.linspace(1, 0, 75))),
-                    np.linspace(0, 0, 75),
-                )
-            )
-        )
-        cmap_acc = LinearSegmentedColormap.from_list("accuracies", colors)
-        plt.imshow(accuracy, cmap=cmap_acc, norm=LogNorm())
-        plt.colorbar(fraction=0.04)
+        plt.imshow(accuracy, norm=LogNorm())
+        cbar = plt.colorbar(fraction=0.04)
+        cbar.ax.tick_params(labelsize=16) 
 
-    plt.title("Accuracies of VQE-states N={0}".format(vqeclass.Hs.N))
-    plt.ylabel(r"$B/\,J_1$")
-    plt.xlabel(r"$J_1/\,J_2$")
+    #plt.title("Accuracies of VQE-states N={0}".format(vqeclass.Hs.N))
+    plt.ylabel(r"$h$", fontsize=24)
+    plt.xlabel(r"$\kappa$", fontsize=24)
+    plt.tick_params(axis="x", labelsize=18)
+    plt.tick_params(axis="y", labelsize=18)
 
     ticks_x = [-.5 , vqeclass.Hs.n_kappas/4 - .5, vqeclass.Hs.n_kappas/2 - .5 , 3*vqeclass.Hs.n_kappas/4 - .5, vqeclass.Hs.n_kappas - .5]
     ticks_y = [-.5 , vqeclass.Hs.n_hs/4 - .5, vqeclass.Hs.n_hs/2 - .5 , 3*vqeclass.Hs.n_hs/4 - .5, vqeclass.Hs.n_hs - .5]
@@ -199,6 +197,25 @@ def show_VQE_annni(vqeclass, log_heatmap = False, plot3d=True):
         labels=[np.round(k * vqeclass.Hs.h_max / 4, 2) for k in range(4, -1, -1)],
     )
 
+
+    if pe_line:
+        getlines_from_vqe(vqeclass, qmlgen.peshel_emery, [0, 0.5], res=100, color = "blue", alpha=1, ls = '--', dashes=(4,5), label = 'Peshel-Emery line')
+        
+    if phase_lines:
+        getlines_from_vqe(vqeclass, qmlgen.paraanti, [0.5, vqeclass.Hs.kappa_max], res=100, color = "red", label = 'Phase-transition\n lines')
+        getlines_from_vqe(vqeclass, qmlgen.paraferro, [0, 0.5], res=100, color = "red")
+        
+    leg = plt.legend(
+            bbox_to_anchor=(1, 1),
+            loc="upper right",
+            fontsize=16,
+            facecolor="white",
+            markerscale=1,
+            framealpha=0.9,
+            title=r"VQE,     $N = {0}$".format(str(vqeclass.Hs.N)),
+            title_fontsize=16,
+        )
+    
     plt.tight_layout()
 
 def show_QCNN_classification1D(qcnnclass, train_index):
@@ -564,6 +581,8 @@ def show_QCNN_classificationANNNI(
 
     plt.ylabel(r"$h$", fontsize=24)
     plt.xlabel(r"$\kappa$", fontsize=24)
+    plt.tick_params(axis="x", labelsize=18)
+    plt.tick_params(axis="y", labelsize=18)
 
     ticks_x = [-.5 , qcnnclass.vqe.Hs.n_kappas/4 - .5, qcnnclass.vqe.Hs.n_kappas/2 - .5 , 3*qcnnclass.vqe.Hs.n_kappas/4 - .5, qcnnclass.vqe.Hs.n_kappas - .5]
     ticks_y = [-.5 , qcnnclass.vqe.Hs.n_hs/4 - .5, qcnnclass.vqe.Hs.n_hs/2 - .5 , 3*qcnnclass.vqe.Hs.n_hs/4 - .5, qcnnclass.vqe.Hs.n_hs - .5]
@@ -600,11 +619,11 @@ def show_QCNN_classificationANNNI(
         plt.ylim(sidey - 1, 0)
         plt.xlim(0, sidex - 1)
 
-    getlines_from_vqe(qcnnclass.vqe, qmlgen.paraanti, [0.5, 1], "white", res=100)
-    getlines_from_vqe(qcnnclass.vqe, qmlgen.paraferro, [0, 0.5], "white", res=100)
+    getlines_from_vqe(qcnnclass.vqe, qmlgen.paraanti, [0.5, 1], res=100, color = "white")
+    getlines_from_vqe(qcnnclass.vqe, qmlgen.paraferro, [0, 0.5], res=100, color = 'white')
     if morelines:
-        getlines_from_vqe(qcnnclass.vqe, qmlgen.peshel_emery, [0, 0.5], "cyan", res=100)
-        getlines_from_vqe(qcnnclass.vqe, qmlgen.b1, [0.5, 1], "blue", res=100)
+        getlines_from_vqe(qcnnclass.vqe, qmlgen.peshel_emery, [0, 0.5], res=100, color = 'cyan')
+        getlines_from_vqe(qcnnclass.vqe, qmlgen.b1, [0.5, 1], res=100, color = "blue")
 
     if label:
         plt.figtext(0.28, 0.79, "(" + label + ")", color="black", fontsize=20)
@@ -653,3 +672,204 @@ def show_QCNN_classificationANNNI(
         # change the line width for the legend
         for line in leg.get_lines():
             line.set_linewidth(4.0)
+
+def show_QCNN_probs(
+    qcnnclass,
+    fix_clim = False,
+    phase_lines = False,
+    pe_line = False,
+    savefig = False
+):
+    phases =['Trash case', 'Ferromagnetic', 'Antiphase', 'Paramagnetic']
+
+    circuit = qcnnclass._vqe_qcnn_circuit
+    sidex = qcnnclass.vqe.Hs.n_kappas
+    sidey = qcnnclass.vqe.Hs.n_hs
+
+    @qml.qnode(qcnnclass.device, interface="jax")
+    def qcnn_circuit_prob(params_vqe, params):
+        circuit(params_vqe, params)
+
+        return qml.probs([int(k) for k in qcnnclass.final_active_wires])
+
+    vcircuit = jax.vmap(
+        lambda v: qcnn_circuit_prob(v, qcnnclass.params), in_axes=(0)
+    )
+
+    predictions = np.array(vcircuit(qcnnclass.vqe_params))
+    
+    for phase in range(4):
+        plt.figure(figsize=(8, 6), dpi=80)
+        
+        plt.imshow(np.rot90(np.reshape(predictions[:,phase],(sidex,sidey))) )
+
+        plt.ylabel(r"$h$", fontsize=24)
+        plt.xlabel(r"$\kappa$", fontsize=24)
+
+        ticks_x = [-.5 , qcnnclass.vqe.Hs.n_kappas/4 - .5, qcnnclass.vqe.Hs.n_kappas/2 - .5 , 3*qcnnclass.vqe.Hs.n_kappas/4 - .5, qcnnclass.vqe.Hs.n_kappas - .5]
+        ticks_y = [-.5 , qcnnclass.vqe.Hs.n_hs/4 - .5, qcnnclass.vqe.Hs.n_hs/2 - .5 , 3*qcnnclass.vqe.Hs.n_hs/4 - .5, qcnnclass.vqe.Hs.n_hs - .5]
+
+        plt.xticks(
+            ticks= ticks_x,
+            labels=[np.round(k * qcnnclass.vqe.Hs.kappa_max  / 4, 2) for k in range(0, 5)],
+        )
+        plt.yticks(
+            ticks=ticks_y,
+            labels=[np.round(k * qcnnclass.vqe.Hs.h_max / 4, 2) for k in range(4, -1, -1)],
+        )
+
+        plt.tick_params(axis="x", labelsize=18)
+        plt.tick_params(axis="y", labelsize=18)
+
+        if pe_line:
+            getlines_from_vqe(qcnnclass.vqe, qmlgen.peshel_emery, [0, 0.5], res=100, color = "blue", alpha=1, ls = '--', dashes=(4,5), label = 'Peshel-Emery line')
+            
+        if phase_lines:
+            getlines_from_vqe(qcnnclass.vqe, qmlgen.paraanti, [0.5, qcnnclass.vqe.Hs.kappa_max], res=100, color = "red", label = 'Phase-transition\n lines')
+            getlines_from_vqe(qcnnclass.vqe, qmlgen.paraferro, [0, 0.5], res=100, color = "red")
+            
+        
+        leg = plt.legend(
+            bbox_to_anchor=(1, 1),
+            loc="upper right",
+            fontsize=16,
+            facecolor="white",
+            markerscale=1,
+            framealpha=0.9,
+            title=r"{0} probability$\bigskip\\~\quad N = {1}$".format(phases[phase], str(qcnnclass.N)),
+            title_fontsize=16,
+        )
+     
+        cbar = plt.colorbar(fraction=0.04)
+        cbar.ax.tick_params(labelsize=16) 
+        if fix_clim:
+            plt.clim(0,1)
+
+        plt.tight_layout()
+        if type(savefig) == str:
+            plt.savefig('./'+savefig+'_'+str(phase)+'.png', bbox_inches='tight')
+            
+        plt.show()
+
+def mass_gap(vqeclass, phase_lines = False, pe_line = False):
+    """
+    Shows results of a trained VQE run:
+    > VQE enegies plot
+    > Loss curve if VQE was trained using recycle = False
+    > Final relative errors
+    > Mean Squared difference between final neighbouring states
+    """
+    
+    sidex = vqeclass.Hs.n_kappas
+    sidey = vqeclass.Hs.n_hs
+    max_x = vqeclass.Hs.kappa_max
+    max_y = vqeclass.Hs.h_max
+
+    mass_gap = np.reshape( vqeclass.Hs.true_e1 - vqeclass.Hs.true_e0, (sidex, sidey) )
+    
+    plt.figure(figsize=(8, 6), dpi=80)
+    plt.imshow(np.rot90(mass_gap))
+    cbar = plt.colorbar(fraction=0.04)
+    cbar.ax.tick_params(labelsize=16) 
+
+    #plt.title("Accuracies of VQE-states N={0}".format(vqeclass.Hs.N))
+    plt.ylabel(r"$h$", fontsize=24)
+    plt.xlabel(r"$\kappa$", fontsize=24)
+    plt.tick_params(axis="x", labelsize=18)
+    plt.tick_params(axis="y", labelsize=18)
+
+    ticks_x = [-.5 , vqeclass.Hs.n_kappas/4 - .5, vqeclass.Hs.n_kappas/2 - .5 , 3*vqeclass.Hs.n_kappas/4 - .5, vqeclass.Hs.n_kappas - .5]
+    ticks_y = [-.5 , vqeclass.Hs.n_hs/4 - .5, vqeclass.Hs.n_hs/2 - .5 , 3*vqeclass.Hs.n_hs/4 - .5, vqeclass.Hs.n_hs - .5]
+
+    plt.xticks(
+        ticks= ticks_x,
+        labels=[np.round(k * vqeclass.Hs.kappa_max  / 4, 2) for k in range(0, 5)],
+    )
+    plt.yticks(
+        ticks=ticks_y,
+        labels=[np.round(k * vqeclass.Hs.h_max / 4, 2) for k in range(4, -1, -1)],
+    )
+
+
+    if pe_line:
+        getlines_from_vqe(vqeclass, qmlgen.peshel_emery, [0, 0.5], res=100, color = "blue", alpha=1, ls = '--', dashes=(4,5), label = 'Peshel-Emery line')
+        
+    if phase_lines:
+        getlines_from_vqe(vqeclass, qmlgen.paraanti, [0.5, vqeclass.Hs.kappa_max], res=100, color = "red", label = 'Phase-transition\n lines')
+        getlines_from_vqe(vqeclass, qmlgen.paraferro, [0, 0.5], res=100, color = "red")
+        
+    leg = plt.legend(
+            bbox_to_anchor=(1, 1),
+            loc="upper right",
+            fontsize=16,
+            facecolor="white",
+            markerscale=1,
+            framealpha=0.9,
+            title=r"VQE,     $N = {0}$".format(str(vqeclass.Hs.N)),
+            title_fontsize=16,
+        )
+    
+    plt.tight_layout()
+
+def vqepsi_truepsi_fidelity(vqeclass, phase_lines = False, pe_line = False):
+
+    sidex = vqeclass.Hs.n_kappas
+    sidey = vqeclass.Hs.n_hs
+    max_x = vqeclass.Hs.kappa_max
+    max_y = vqeclass.Hs.h_max
+
+    @qml.qnode(vqeclass.device, interface="jax")
+    def q_vqe_state(vqe_params):
+        vqeclass.circuit(vqe_params)
+
+        return qml.state()
+
+    jv_fidelity = jax.jit(lambda true, pars: losses.vqe_fidelities(true, pars, q_vqe_state))
+    
+    fidelity_map = jv_fidelity(vqeclass.Hs.true_psi0, vqeclass.vqe_params0) 
+    fidelity_map = np.reshape(fidelity_map, (sidex, sidey))
+
+    plt.figure(figsize=(8, 6), dpi=80)
+    plt.imshow(np.rot90(fidelity_map))
+    cbar = plt.colorbar(fraction=0.04)
+    cbar.ax.tick_params(labelsize=16) 
+
+    #plt.title("Accuracies of VQE-states N={0}".format(vqeclass.Hs.N))
+    plt.ylabel(r"$h$", fontsize=24)
+    plt.xlabel(r"$\kappa$", fontsize=24)
+    plt.tick_params(axis="x", labelsize=18)
+    plt.tick_params(axis="y", labelsize=18)
+
+    ticks_x = [-.5 , vqeclass.Hs.n_kappas/4 - .5, vqeclass.Hs.n_kappas/2 - .5 , 3*vqeclass.Hs.n_kappas/4 - .5, vqeclass.Hs.n_kappas - .5]
+    ticks_y = [-.5 , vqeclass.Hs.n_hs/4 - .5, vqeclass.Hs.n_hs/2 - .5 , 3*vqeclass.Hs.n_hs/4 - .5, vqeclass.Hs.n_hs - .5]
+
+    plt.xticks(
+        ticks= ticks_x,
+        labels=[np.round(k * vqeclass.Hs.kappa_max  / 4, 2) for k in range(0, 5)],
+    )
+    plt.yticks(
+        ticks=ticks_y,
+        labels=[np.round(k * vqeclass.Hs.h_max / 4, 2) for k in range(4, -1, -1)],
+    )
+
+
+    if pe_line:
+        getlines_from_vqe(vqeclass, qmlgen.peshel_emery, [0, 0.5], res=100, color = "blue", alpha=1, ls = '--', dashes=(4,5), label = 'Peshel-Emery line')
+        
+    if phase_lines:
+        getlines_from_vqe(vqeclass, qmlgen.paraanti, [0.5, vqeclass.Hs.kappa_max], res=100, color = "red", label = 'Phase-transition\n lines')
+        getlines_from_vqe(vqeclass, qmlgen.paraferro, [0, 0.5], res=100, color = "red")
+        
+    leg = plt.legend(
+            bbox_to_anchor=(1, 1),
+            loc="upper right",
+            fontsize=16,
+            facecolor="white",
+            markerscale=1,
+            framealpha=0.9,
+            title=r"Fidelities,     $N = {0}$".format(str(vqeclass.Hs.N)),
+            title_fontsize=16,
+        )
+    
+    plt.tight_layout()
+
