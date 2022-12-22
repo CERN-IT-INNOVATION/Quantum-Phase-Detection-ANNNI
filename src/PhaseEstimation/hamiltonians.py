@@ -1,7 +1,7 @@
 """ This module implements the base class for spin-models Hamiltonians"""
 
-from PhaseEstimation import general as qmlgen
-
+from PhaseEstimation import general as qmlgen, visualization as qplt, annni_model as annni
+import warnings 
 from tqdm.auto import tqdm
 from typing import Callable
 import numpy as np
@@ -41,6 +41,38 @@ class hamiltonian:
         ) = self.func(**kwargs)
 
         self.n_states = len(self.qml_Hs)
+
+    def add_true(self):
+        """
+        Add true ground-state energy levels and true wavefunctions by diagonalizing the Hamiltonian matrices
+        """
+        
+        # Checks wether this has already been computed
+        try:
+            _,_, = self.true_e0, self.true_psi0
+        except:
+            warnings.warn("True Wavefunction and Groundstate energy levels not found, they will be not computed (this may take a while...)")
+            self.true_e0, self.true_psi0 = get_e_psi(self, 0)
+
+        # Checks wether this has already been computed
+        try:
+            _,_, = self.true_e1, self.true_psi1
+        except:
+            warnings.warn("True Wavefunction and First excited energy levels not found, they will be not computed (this may take a while...)")
+            self.true_e1, self.true_psi1 = get_e_psi(self, 1)
+
+    def show_massgap(self, **kwargs):
+        if self.func == annni.build_Hs:
+            self.add_true()
+            qplt.HAM_mass_gap(self, **kwargs)
+        else:
+            raise Exception("Function not supported for this kind of Hamiltonian")
+
+    def show_phasesplot(self):
+        if self.func == annni.build_Hs:
+            qplt.HAM_phases_plot(self)
+        else:
+            raise Exception("Function not supported for this kind of Hamiltonian")
 
 def get_e_psi(Hclass, en_lvl):
     e_list   = []

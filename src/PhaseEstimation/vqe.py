@@ -18,6 +18,8 @@ warnings.filterwarnings(
 
 from PhaseEstimation import circuits, losses, hamiltonians
 from PhaseEstimation import general as qmlgen
+from PhaseEstimation import annni_model as annni, ising_chain as ising
+from PhaseEstimation import visualization as qplt
 
 from typing import List, Callable
 from numbers import Number
@@ -263,7 +265,7 @@ class vqe:
         # > H: Hamiltonian of the model
         # > H_eff: Effective Hamiltonian for the model (H +|psi><psi|)
         # > site: index for (L,K) combination
-        H, self.true_e0[site] = qmlgen.get_VQE_params(self.Hs.qml_Hs[site])
+        H, self.Hs.true_e0[site] = qmlgen.get_VQE_params(self.Hs.qml_Hs[site])
 
         index = [site]
         param = copy.copy(self.vqe_params0[index])
@@ -276,27 +278,6 @@ class vqe:
 
         self.vqe_e0[site] = self.jv_compute_vqe_E(self.jv_q_vqe_state(param), H)
         self.vqe_params0[site] = param
-
-    def train_site_excited(self, lr: Number, n_epochs: int, site: int, beta: Number):
-        """
-        Minimize <psi|H|psi> + beta|<psi|psi_0>|^2 for a single site
-        """
-        # Get all the necessary training parameters for the VQD algorithm
-        # > H: Hamiltonian of the model
-        # > H_eff: Effective Hamiltonian for the model (H +|psi><psi|)
-        # > site: index for (L,K) combination
-        H, H_eff, self.true_e1[site] = qmlgen.get_VQD_params(self.Hs.qml_Hs[site], beta)
-
-        param = copy.copy(self.vqe_params1[[site]])
-        opt_init, opt_update, get_params = optimizers.adam(lr)
-        opt_state = opt_init(param)
-        for _ in range(n_epochs):
-            param, opt_state = self._update(
-                param, H_eff, opt_state, opt_update, get_params
-            )
-
-        self.vqe_e1[site] = self.jv_compute_vqe_E(self.jv_q_vqe_state(param), H)
-        self.vqe_params1[site] = param
 
     def train(self, lr: Number, n_epochs: int, circuit: bool = False):
         """
@@ -326,6 +307,11 @@ class vqe:
             np.zeros((self.Hs.n_states, self.n_params)),
             np.zeros((self.Hs.n_states,)),
         )
+
+        try:
+            self.Hs.true_e0
+        except:
+            self.Hs.true_e0 = np.array([0.]*len(self.Hs.recycle_rule))
 
         progress = tqdm(self.Hs.recycle_rule, position=0, leave=True)
         # Site will follow the order of Hs.recycle rule:
@@ -359,59 +345,6 @@ class vqe:
                 self.vqe_params0[site] = copy.copy(self.vqe_params0[pred_site])
 
             self.train_site(lr, epochs, int(site))
-            self.true_e0[site]
-            pred_site = site  # Previous site for next training
-
-    def train_excited(
-        self, lr: Number, n_epochs: int, beta: Number, circuit: bool = False
-    ):
-        """
-        Training function through VQD.
-        VQD is trained finding psi such that:
-        <psi|H|psi> + beta*|<psi_0|psi>|**2
-        is minimized.
-
-        Parameters
-        ----------
-        lr : float
-            Learning rate to be multiplied in the circuit-gradient output
-        n_epochs : int
-            Total number of epochs for each learning
-        beta : float
-            Importance (regularization strenght) given to the orthogonalization with psi_0
-        circuit : bool
-            if True -> Prints the circuit
-        """
-        pred_site: int
-
-        if circuit:
-            # Display the circuit
-            print("+--- CIRCUIT ---+")
-            print(self)
-
-        # Initialize parameters
-        self.vqe_e1, self.vqe_params1, self.true_e1 = (
-            np.zeros((self.Hs.n_states,)),
-            np.zeros((self.Hs.n_states, self.n_params)),
-            np.zeros((self.Hs.n_states,)),
-        )
-
-        progress = tqdm(self.Hs.recycle_rule, position=0, leave=True)
-        for site in progress:
-            # First site will be trained more since it starts from a
-            # random configuration of parameters
-            if site == 0:
-                epochs = 10 * n_epochs
-                # Random initial state
-                self.vqe_params1[site] = jnp.array(
-                    np.random.uniform(-np.pi, np.pi, size=(self.n_params))
-                )
-            else:
-                epochs = n_epochs
-                # Initial state is the final state of last site trained
-                self.vqe_params1[site] = copy.copy(self.vqe_params1[pred_site])
-
-            self.train_site_excited(lr, epochs, int(site), beta)
             pred_site = site  # Previous site for next training
 
     def train_refine(
@@ -460,56 +393,42 @@ class vqe:
 
             progress.update(1)
 
-    def train_refine_excited(
-        self,
-        lr: Number,
-        n_epochs: int,
-        acc_thr: Number,
-        beta: Number,
-        assist: bool = False,
-    ):
+    def show(self, **kwargs):
         """
-        Training only the sites that have an accuracy score worse (higher) than acc_thr
-        for the excited states
-
-        Parameters
-        ----------
-        lr : float
-            Learning rate to be multiplied in the circuit-gradient output
-        n_epochs : int
-            Total number of epochs for each learning
-        acc_thr : float
-            Accuracy threshold for which selecting the sites to train
-        assist : bool
-            if True -> Each site that will be trained will start from the neighbouring site
-            that has the better accuracy
+        Plot the accuracy of the VQE
         """
-        progress = tqdm(range(self.Hs.n_states), position=0, leave=True)
-        # Select the sites to train based on their accuracy score
-        for site in self.Hs.recycle_rule:
-            # Accuracy value of the given site
-            accuracy = np.abs(
-                (self.vqe_e1[site] - self.true_e1[site]) / self.true_e1[site]
-            )
 
-            if accuracy > acc_thr:  # If the accuracy is bad (higher than threshold)...
-                # if assist we copy the state from the best neighbouring site and
-                # starting training from there
-                if assist:
-                    # Array of indexes of neighbouring sites
-                    neighbours = np.array(self._get_neighbours(site))
-                    # Array of their respective accuracies
-                    neighbours_accuracies = np.abs(
-                        (self.vqe_e1[neighbours] - self.true_e1[neighbours])
-                        / self.true_e1[neighbours]
-                    )
-                    # Select the index of the neighbour with the best (lowest) accuracy score
-                    best_neighbour = neighbours[np.argmin(neighbours_accuracies)]
-                    self.vqe_params1[site] = copy.copy(self.vqe_params1[best_neighbour])
-                # Start training the site
-                self.train_site_excited(lr, n_epochs, int(site), beta)
+        # Checks wether we are dealing with an isingchain (1D parameter space: mu)
+        # or an annni model (2D parameter space: (kappa, h))
+        if self.Hs.func == ising.build_Hs:
+            qplt.VQE_show_isingchain(self)
+        elif self.Hs.func == annni.build_Hs:
+            qplt.VQE_show_annni(self, **kwargs)
 
-            progress.update(1)
+    def show_fidelity(self, **kwargs):
+        """
+        Plot the accuracy of the VQE
+        """
+
+        # Checks wether we are dealing with an isingchain (1D parameter space: mu)
+        # or an annni model (2D parameter space: (kappa, h))
+        if self.Hs.func == ising.build_Hs:
+            raise Exception("Function not implemented for this type of VQE")
+        elif self.Hs.func == annni.build_Hs:
+            qplt.VQE_psi_truepsi_fidelity(self, **kwargs)
+
+    def show_fidelity_slice(self, slice_value, axis = 0, truestates = False):
+        """
+        Plot the accuracy of the VQE
+        """
+
+        # Checks wether we are dealing with an isingchain (1D parameter space: mu)
+        # or an annni model (2D parameter space: (kappa, h))
+        if self.Hs.func == ising.build_Hs:
+            raise Exception("Function not implemented for this type of VQE")
+        elif self.Hs.func == annni.build_Hs:
+            qplt.VQE_fidelity_slice(self, slice_value, axis = axis, truestates = truestates)
+        
 
     def save(self, filename: str):
         """

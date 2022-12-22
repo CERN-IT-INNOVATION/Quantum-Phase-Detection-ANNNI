@@ -164,6 +164,8 @@ class encoder:
 
         self.params = params
 
+    def show_compression(self, trainingpoint, label = False, plot3d = False):
+        qplt.ENC_show_compression_ANNNI(self, trainingpoint=trainingpoint, label=label, plot3d=plot3d)
 
 def enc_classification_ANNNI(
     vqeclass: vqe.vqe, lr: Number, epochs: int

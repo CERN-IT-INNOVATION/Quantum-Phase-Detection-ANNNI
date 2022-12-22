@@ -9,7 +9,7 @@ from matplotlib import pyplot as plt
 
 import copy, tqdm, pickle
 
-from PhaseEstimation import circuits, vqe, general as qmlgen
+from PhaseEstimation import circuits, vqe, general as qmlgen, ising_chain as ising, annni_model as annni, visualization as qplt
 
 from typing import Tuple, List, Callable
 from numbers import Number
@@ -301,6 +301,15 @@ class qcnn:
                 pickle.dump(things_to_save, f)
         else:
             raise TypeError("Invalid name for file")
+
+
+    def show(self, train_index = [], marginal = False, **kwargs):
+        if self.vqe.Hs.func == ising.build_Hs:
+            qplt.QCNN_classification_ising(self, train_index)
+        elif self.vqe.Hs.func == annni.build_Hs:
+            if marginal:
+                qplt.QCNN_classification_ANNNI_marginal(self)
+            qplt.QCNN_classification_ANNNI(self, **kwargs)
 
 
 def load(filename_vqe: str, filename_qcnn: str) -> qcnn:
