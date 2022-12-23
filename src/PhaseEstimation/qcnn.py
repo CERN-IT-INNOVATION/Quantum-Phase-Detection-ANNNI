@@ -285,6 +285,42 @@ class qcnn:
             plt.grid(True)
             plt.legend()
 
+    def predict(self):
+        @qml.qnode(self.device, interface="jax")
+        def qcnn_circuit_prob(params_vqe, params):
+            self._vqe_qcnn_circuit(params_vqe, params)
+
+            return qml.probs([int(k) for k in self.final_active_wires])
+
+        vcircuit = jax.vmap(
+            lambda v: qcnn_circuit_prob(v, self.params), in_axes=(0)
+        )
+
+        predictions = np.array(vcircuit(self.vqe_params))
+
+        return predictions
+
+    def predict_lines(self, predictions = []):
+        sidex, sidey = self.vqe.Hs.n_kappas, self.vqe.Hs.n_hs
+        print(sidex,sidey)
+        if len(predictions) == 0:
+            predictions = self.predict()
+
+        predictions = np.reshape(np.argmax(predictions,axis=1), (sidex,sidey))
+        line_trans = []
+
+        for col in range(sidex):
+            y_cord_trans = 0
+            for row in range(sidey-1,-1,-1):
+                prediction = predictions[col,row]
+                if prediction != 3:
+                    break
+                y_cord_trans += 1
+
+            line_trans.append(y_cord_trans)
+
+        return np.array(line_trans)
+
     def save(self, filename: str):
         """
         Saves QCNN parameters to file

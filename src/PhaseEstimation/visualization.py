@@ -68,8 +68,9 @@ def getlines_from_Hs(
 
     plt.plot(corrected_xs, side_y - ys * side_y / yrange[1] - 0.5, **kwargs)
 
-def plot_layout(Hs, pe_line, phase_lines, title):
-    plt.figure(figsize=(8, 6), dpi=80)
+def plot_layout(Hs, pe_line, phase_lines, title, figure_already_defined = False):
+    if not figure_already_defined:
+        plt.figure(figsize=(8, 6), dpi=80)
 
     #plt.title("Accuracies of VQE-states N={0}".format(vqeclass.Hs.N))
     plt.ylabel(r"$h$", fontsize=24)
@@ -580,63 +581,32 @@ def QCNN_classification_ANNNI_marginal(qcnnclass):
 def QCNN_classification_ANNNI(
     qcnnclass,
     hard_thr=True,
+    predicted_line = False,
     label=False,
     info=False,
 ):
 
     plt.figure(figsize=(8, 6), dpi=80)
-    plot_layout(qcnnclass.vqe.Hs, False, True, r"QCNN,     $N = {0}$".format(str(qcnnclass.N)))
     
-    circuit = qcnnclass._vqe_qcnn_circuit
     sidex = qcnnclass.vqe.Hs.n_kappas
     sidey = qcnnclass.vqe.Hs.n_hs
 
+    predictions = qcnnclass.predict()
+
     if hard_thr:
-
-        @qml.qnode(qcnnclass.device, interface="jax")
-        def qcnn_circuit_prob(params_vqe, params):
-            circuit(params_vqe, params)
-
-            return [qml.probs(wires=int(k)) for k in qcnnclass.final_active_wires]
-
-        vcircuit = jax.vmap(
-            lambda v: qcnn_circuit_prob(v, qcnnclass.params), in_axes=(0)
-        )
-
-        predictions = np.array(np.argmax(vcircuit(qcnnclass.vqe_params), axis=2))
-        c = []
-        for pred in predictions:
-            if (pred == [0, 1]).all():
-                c.append(0)
-            elif (pred == [1, 1]).all():
-                c.append(1)
-            elif (pred == [1, 0]).all():
-                c.append(2)
-            else:
-                c.append(3)
+        predictions = np.argmax(predictions, axis=1)
 
         phases = mpl.colors.ListedColormap(
-            ["lightcoral", "skyblue", "black", "palegreen"]
+            ["black", "skyblue", "yellow", "palegreen"]
         )
-        norm = mpl.colors.BoundaryNorm(np.arange(0, 4), phases.N)
-        plt.imshow(np.rot90(np.reshape(c, (sidex, sidey))), cmap=phases, norm=norm, aspect = qcnnclass.vqe.Hs.n_kappas / qcnnclass.vqe.Hs.n_hs)
+        norm = mpl.colors.BoundaryNorm(np.arange(0, 5), phases.N)
+
+        plt.imshow(np.rot90(np.reshape(predictions, (sidex, sidey))), cmap=phases, norm=norm, aspect = qcnnclass.vqe.Hs.n_kappas / qcnnclass.vqe.Hs.n_hs)
+
     else:
-
-        @qml.qnode(qcnnclass.device, interface="jax")
-        def qcnn_circuit_prob(params_vqe, params):
-            circuit(params_vqe, params)
-
-            return qml.probs([int(k) for k in qcnnclass.final_active_wires])
-
-        vcircuit = jax.vmap(
-            lambda v: qcnn_circuit_prob(v, qcnnclass.params), in_axes=(0)
-        )
-
-        predictions = np.array(vcircuit(qcnnclass.vqe_params))
         mygreen = np.array([90, 255, 100]) / 255
         myblue = np.array([50, 50, 200]) / 255
         myyellow = np.array([300, 270, 0]) / 255
-        c = []
 
         rgb_probs = np.ndarray(shape=(sidex * sidey, 3), dtype=float)
 
@@ -646,6 +616,11 @@ def QCNN_classification_ANNNI(
         rgb_probs = np.rot90(np.reshape(rgb_probs, (sidex, sidey, 3)))
 
         plt.imshow(rgb_probs, alpha=1, aspect = qcnnclass.vqe.Hs.n_kappas / qcnnclass.vqe.Hs.n_hs)
+
+        if predicted_line:
+            plt.plot(qcnnclass.predict_lines(predictions=predictions), color='magenta', label='Predicted Transition Lines')
+
+    plot_layout(qcnnclass.vqe.Hs, False, True, r"QCNN,     $N = {0}$".format(str(qcnnclass.N)),figure_already_defined=True)
 
     if label:
         plt.figtext(0.28, 0.79, "(" + label + ")", color="black", fontsize=20)
