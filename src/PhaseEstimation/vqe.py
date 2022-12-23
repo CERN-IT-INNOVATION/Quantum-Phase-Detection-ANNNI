@@ -92,7 +92,7 @@ def circuit_ising2(N: int, params: List[Number]) -> int:
 
 def circuit_ising3(N: int, params: List[Number]) -> int:
     """
-    ????????????????????'
+    Shorter and more real circuit
 
     Parameters
     ----------
@@ -395,7 +395,18 @@ class vqe:
 
     def show(self, **kwargs):
         """
-        Plot the accuracy of the VQE
+        Shows results of a trained VQE (ANNNI) run:
+
+        Parameters
+        ----------
+        log_heatmap : bool
+            (IF ANNNI) if True, the accuracy is displayed in logscale
+        plot3d : bool
+            (IF ANNNI) if True the predicted energies and true energies will be displayed in a 3D plot
+        phase_lines : bool
+            (IF ANNNI) if True plots the phase transition lines
+        pe_line : bool
+            (IF ANNNI) if True plots Peshel Emery line
         """
 
         # Checks wether we are dealing with an isingchain (1D parameter space: mu)
@@ -407,9 +418,15 @@ class vqe:
 
     def show_fidelity(self, **kwargs):
         """
-        Plot the accuracy of the VQE
-        """
+        For each VQE resulting state, show its fidelity compared to its true state obtained through diagonalization of the Hamiltonian:
 
+        Parameters
+        ----------
+        phase_lines : bool
+            if True plots the phase transition lines
+        pe_line : bool
+            if True plots Peshel Emery line
+        """
         # Checks wether we are dealing with an isingchain (1D parameter space: mu)
         # or an annni model (2D parameter space: (kappa, h))
         if self.Hs.func == ising.build_Hs:
@@ -419,7 +436,20 @@ class vqe:
 
     def show_fidelity_slice(self, slice_value, axis = 0, truestates = False):
         """
-        Plot the accuracy of the VQE
+        Shows confusion matrix of fidelities of only a 'slice' of states in the parameter space.
+        In other words, it will be computed the fidelity of each state among every other that share
+        the same h or kappa.
+
+        Parameters
+        ----------
+        slice_value : float
+            if axis = 0, then we will pick only the states having h = slice_value and kappa whatever
+            if axis = 1, then we will pick only the states having kappa = slice_value and h whatever
+        axis : int
+            Direction of where to slide, 0 is horizontal (fixed h), 1 is vertical (fixed kappa)
+        truestates : bool
+            if True the true states will be employed
+            if False the VQE states will be employed
         """
 
         # Checks wether we are dealing with an isingchain (1D parameter space: mu)
@@ -428,7 +458,6 @@ class vqe:
             raise Exception("Function not implemented for this type of VQE")
         elif self.Hs.func == annni.build_Hs:
             qplt.VQE_fidelity_slice(self, slice_value, axis = axis, truestates = truestates)
-        
 
     def save(self, filename: str):
         """

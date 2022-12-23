@@ -286,6 +286,14 @@ class qcnn:
             plt.legend()
 
     def predict(self):
+        """
+        Get the phases probabilities for each VQE state
+
+        Returns
+        -------
+        List[List[Number]]
+            List of probabilities
+        """
         @qml.qnode(self.device, interface="jax")
         def qcnn_circuit_prob(params_vqe, params):
             self._vqe_qcnn_circuit(params_vqe, params)
@@ -301,6 +309,19 @@ class qcnn:
         return predictions
 
     def predict_lines(self, predictions = []):
+        """
+        Get the prdicted phase-transition line
+
+        Parameters
+        ----------
+        predictions : List[List[Number]]
+            This is the output of self.predict(), if it is not passed, the predictions will be computed asnew
+
+        Returns
+        -------
+        List[Number]
+            y-coordinate of the transition point for each kappa value
+        """
         sidex, sidey = self.vqe.Hs.n_kappas, self.vqe.Hs.n_hs
         print(sidex,sidey)
         if len(predictions) == 0:

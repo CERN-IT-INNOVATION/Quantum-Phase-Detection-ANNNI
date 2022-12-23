@@ -165,6 +165,18 @@ class encoder:
         self.params = params
 
     def show_compression(self, trainingpoint, label = False, plot3d = False):
+        """
+        Plots performance of the compression on the whole data for an encoder on the ANNI model
+
+        Parameters
+        ----------
+        trainingpoint : int
+            Mark the single training point on the plot 
+        label : str
+            Label to assign to the picture, needed for the paper
+        plot3d : bool
+            If True the 3D plot will be displayed aswell
+        """
         qplt.ENC_show_compression_ANNNI(self, trainingpoint=trainingpoint, label=label, plot3d=plot3d)
 
 def enc_classification_ANNNI(
@@ -192,11 +204,14 @@ def enc_classification_ANNNI(
         Array of labels
     """
     # indexes of the 3 corner points
-    side = vqeclass.Hs.side
-    phase1 = 0
-    phase2 = side - 1
-    phase3 = int(vqeclass.Hs.n_states - side)
+    sidey = vqeclass.Hs.n_hs
+    sidex = vqeclass.Hs.n_kappas  
 
+    phase1 = 0
+    phase2 = sidey - 1
+    phase3 = int(vqeclass.Hs.n_states - sidey)
+
+    # We define a throwaway encoder just to use its device to define the quantum circuit
     encclass = encoder(vqeclass, encoder_circuit)
 
     X = jnp.array(encclass.vqe_params0)
@@ -216,29 +231,18 @@ def enc_classification_ANNNI(
             lambda x: encoder_circuit_class(x, encclass.params)
         )
         exps = (1 - np.sum(v_encoder_circuit(X), axis=1) / 4) / 2
-        exps = np.rot90(np.reshape(exps, (side, side)))
+        exps = np.rot90(np.reshape(exps, (sidex, sidey)))
 
         encoding_scores.append(exps)
 
-    qplt.getlines(qmlgen.paraanti, [0.5, 1 - 1e-5], side, "white", res=100)
-    qplt.getlines(qmlgen.paraferro, [1e-5, 0.5], side, "white", res=100)
+    qplt.plot_layout(vqeclass.Hs, pe_line=False, phase_lines=True, title='Classification of the encoder')
 
-    phases = mpl.colors.ListedColormap(["navy", "crimson", "limegreen", "limegreen"])
-    norm = mpl.colors.BoundaryNorm(np.arange(0, 4), phases.N)
+    phases = mpl.colors.ListedColormap(
+            ["palegreen", "skyblue", "yellow", "black"]
+        )
+    norm = mpl.colors.BoundaryNorm(np.arange(0, 5), phases.N)
     plt.imshow(np.argmin(np.array(encoding_scores), axis=(0)), cmap=phases, norm=norm)
 
-    plt.ylabel(r"$h$", fontsize=24)
-    plt.xlabel(r"$\kappa$", fontsize=24)
-
-    plt.xticks(
-        ticks=np.linspace(0, side - 1, 5).astype(int),
-        labels=[np.round(k * 1 / 4, 2) for k in range(0, 5)],
-        fontsize=18,
-    )
-    plt.yticks(
-        ticks=np.linspace(0, side - 1, 5).astype(int),
-        labels=[np.round(k * 2 / 4, 2) for k in range(4, -1, -1)],
-        fontsize=18,
-    )
+    
 
     return np.argmin(np.array(encoding_scores), axis=(0))

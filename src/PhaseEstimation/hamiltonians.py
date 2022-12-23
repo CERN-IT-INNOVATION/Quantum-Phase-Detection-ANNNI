@@ -62,6 +62,19 @@ class hamiltonian:
             self.true_e1, self.true_psi1 = get_e_psi(self, 1)
 
     def show_massgap(self, **kwargs):
+        """
+        Shows the mass gap which is defined as the difference between the first excited leven and the ground energy level
+        for each point in the parameter space.
+
+        Parameters
+        ----------
+        Hs : hamiltonians.hamiltonian
+            Custom hamiltonian class, it is needed to call plot_layout
+        phase_lines : bool
+            if True plots the phase transition lines
+        pe_line : bool
+            if True plots Peshel Emery line
+        """
         if self.func == annni.build_Hs:
             self.add_true()
             qplt.HAM_mass_gap(self, **kwargs)
@@ -69,12 +82,33 @@ class hamiltonian:
             raise Exception("Function not supported for this kind of Hamiltonian")
 
     def show_phasesplot(self):
+        """
+        Shows the division of phases of the parameter space according to the state-of-the-art lines
+        """
+
         if self.func == annni.build_Hs:
             qplt.HAM_phases_plot(self)
         else:
             raise Exception("Function not supported for this kind of Hamiltonian")
 
 def get_e_psi(Hclass, en_lvl):
+    """
+    Return respectively the list of the true energies and true states obtained through the diagonalization of the hamiltonian matrices
+
+    Parameters
+    ----------
+    Hclass : hamiltonians.hamiltonians
+        Custom hamiltonian class
+    en_lvl : int
+        Energy level to inspect
+
+    Returns
+    -------
+    List[Number]
+        Array of the energies
+    List[List[Number]]
+        Array of the state vectors
+    """
     e_list   = []
     psi_list = []
     for H in tqdm(Hclass.qml_Hs):

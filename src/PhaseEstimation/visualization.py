@@ -1,3 +1,6 @@
+"""Plotting functions for the classes hamiltonians, vqe, qcnn, encoder.
+This functions are not meant to be used directly, but are called within their respective classes"""
+
 import pennylane as qml
 from pennylane import numpy as np
 import jax
@@ -28,27 +31,24 @@ rc("text", usetex=True)
 #  | |  __    |  |__| | |  |____ |  |\   | |  |____ |  |\  \----./  _____  \  |  `----.
 #  |_| (__)    \______| |_______||__| \__| |_______|| _| `._____/__/     \__\ |_______|
                                                                                      
-def getlines(
-    func: Callable, xrange: List[float], side: int, color: str, res: int = 100
-):
-    """
-    Plot function func from xrange[0] to xrange[1]
-    This first function assumes your parameter ranges are
-    > h     : [ 0, 2]
-    > kappa : [ 0,-1]
-
-    """
-    xs = np.linspace(xrange[0], xrange[1], res)
-    ys = func(xs)
-    plt.plot(side * xs - 0.5, side - ys * side / 2 - 0.5, color=color, alpha=0.8)
-
 def getlines_from_Hs(
     Hs, func: Callable, xrange: List[float], res: int = 100, **kwargs
 ):
     """
     Plot function func from xrange[0] to xrange[1]
-    This function uses the VQE class to plot the function 
-    according to the vqe ranges of its parameters
+    This function uses the Hamiltonians class to plot the function 
+    according to the ranges of its parameters
+
+    Parameters
+    ----------
+    Hs : hamiltonians.hamiltonian
+        Custom Hamiltonian class
+    func : function
+        Function to plot, usually:
+        > general.paraanti : Transition line between paramagnetic phase and antiphase;
+        > general.paraferro : Transition line between paramagnetic phase and ferromagnetic phase;
+        > general.b1 : Pseudo-transition line inside the antiphase subspace;
+        > general.peshel_emery :Peshel Emery Line.
     """
 
     # Get information from vqeclass for plotting
@@ -69,18 +69,34 @@ def getlines_from_Hs(
     plt.plot(corrected_xs, side_y - ys * side_y / yrange[1] - 0.5, **kwargs)
 
 def plot_layout(Hs, pe_line, phase_lines, title, figure_already_defined = False):
+    """
+    Many plotting functions here have the same layout, this function will be called inside the others
+    to have a standard layout
+
+    Parameters
+    ----------
+    Hs : hamiltonians.hamiltonian
+        Custom hamiltonian class, it is needed to set xlim and ylim and ticks
+    pe_line : bool
+        if True plots Peshel Emery line
+    phase_lines : bool
+        if True plots the phase transition lines
+    title : str
+        Title of the legent of the plot
+    figure_already_defined : bool
+        if False it calls the plt.figure function
+    """
+
     if not figure_already_defined:
         plt.figure(figsize=(8, 6), dpi=80)
 
-    #plt.title("Accuracies of VQE-states N={0}".format(vqeclass.Hs.N))
+    # Set the axes according to the Hamiltonian class
     plt.ylabel(r"$h$", fontsize=24)
     plt.xlabel(r"$\kappa$", fontsize=24)
     plt.tick_params(axis="x", labelsize=18)
     plt.tick_params(axis="y", labelsize=18)
-
     ticks_x = [-.5 , Hs.n_kappas/4 - .5, Hs.n_kappas/2 - .5 , 3*Hs.n_kappas/4 - .5, Hs.n_kappas - .5]
     ticks_y = [-.5 , Hs.n_hs/4 - .5, Hs.n_hs/2 - .5 , 3*Hs.n_hs/4 - .5, Hs.n_hs - .5]
-
     plt.xticks(
         ticks= ticks_x,
         labels=[np.round(k * Hs.kappa_max  / 4, 2) for k in range(0, 5)],
@@ -89,7 +105,6 @@ def plot_layout(Hs, pe_line, phase_lines, title, figure_already_defined = False)
         ticks=ticks_y,
         labels=[np.round(k * Hs.h_max / 4, 2) for k in range(4, -1, -1)],
     )
-
 
     if pe_line:
         getlines_from_Hs(Hs, qmlgen.peshel_emery, [0, 0.5], res=100, color = "blue", alpha=1, ls = '--', dashes=(4,5), label = 'Peshel-Emery line')
@@ -121,30 +136,49 @@ def plot_layout(Hs, pe_line, phase_lines, title, figure_already_defined = False)
                                                                                                                                             
 def HAM_mass_gap(Hs, phase_lines = False, pe_line = False):
     """
-    Shows results of a trained VQE run:
-    > VQE enegies plot
-    > Loss curve if VQE was trained using recycle = False
-    > Final relative errors
-    > Mean Squared difference between final neighbouring states
+    Shows the mass gap which is defined as the difference between the first excited leven and the ground energy level
+    for each point in the parameter space.
+
+    Parameters
+    ----------
+    Hs : hamiltonians.hamiltonian
+        Custom hamiltonian class, it is needed to call plot_layout
+    phase_lines : bool
+        if True plots the phase transition lines
+    pe_line : bool
+        if True plots Peshel Emery line
     """
     
     sidex = Hs.n_kappas
     sidey = Hs.n_hs
 
+    # Compute the massgap
     mass_gap = np.reshape(Hs.true_e1 - Hs.true_e0, (sidex, sidey) )
     
     plot_layout(Hs, phase_lines=phase_lines, pe_line=pe_line, title=r"Mass Gap,     $N = {0}$".format(str(Hs.N)))
 
     plt.imshow(np.rot90(mass_gap), aspect = Hs.n_kappas / Hs.n_hs)
+
     cbar = plt.colorbar(fraction=0.04)
     cbar.ax.tick_params(labelsize=16)
 
 def HAM_phases_plot(Hs):
+    """
+    Shows the division of phases of the parameter space according to the state-of-the-art lines
+
+    Parameters
+    ----------
+    Hs : hamiltonians.hamiltonian
+        Custom hamiltonian class, it is needed to call plot_layout
+    """
+
     sidex = Hs.n_kappas
     sidey = Hs.n_hs
     xs = np.linspace(0,Hs.kappa_max,sidex)
     ys = np.linspace(0,Hs.h_max,sidey)
 
+    # Mark every point of the parameter space to its corresponding phase according to the
+    # state-of-the-art transition lines
     phases = []
     for x in xs:
         for y in ys:
@@ -180,14 +214,12 @@ def HAM_phases_plot(Hs):
 #             
 def VQE_show_isingchain(vqeclass):
     """
-    Shows results of a trained VQE run
+    Shows results of a trained VQE (Nearest Neighbour Ising Model) run
 
     Parameters
     ----------
     vqeclass : vqe.vqe
         Custom VQE class after being trained
-    excited : bool
-        if True -> tries to display the Excited states aswell
     """
     # Exit if the VQE was not trained for excited states
     true_e = vqeclass.true_e0
@@ -218,13 +250,22 @@ def VQE_show_isingchain(vqeclass):
 
     plt.tight_layout()
 
-def VQE_show_annni(vqeclass, log_heatmap = False, plot3d=True, phase_lines = False, pe_line = False, info = False):
+def VQE_show_annni(vqeclass, log_heatmap = False, plot3d=True, phase_lines = False, pe_line = False):
     """
-    Shows results of a trained VQE run:
-    > VQE enegies plot
-    > Loss curve if VQE was trained using recycle = False
-    > Final relative errors
-    > Mean Squared difference between final neighbouring states
+    Shows results of a trained VQE (ANNNI) run:
+
+    Parameters
+    ----------
+    vqeclass : vqe.vqe
+        Custom VQE class after being trained
+    log_heatmap : bool
+        if True, the accuracy is displayed in logscale
+    plot3d : bool
+        if True the predicted energies and true energies will be displayed in a 3D plot
+    phase_lines : bool
+        if True plots the phase transition lines
+    pe_line : bool
+        if True plots Peshel Emery line
     """
     
     sidex = vqeclass.Hs.n_kappas
@@ -232,8 +273,12 @@ def VQE_show_annni(vqeclass, log_heatmap = False, plot3d=True, phase_lines = Fal
     max_x = vqeclass.Hs.kappa_max
     max_y = vqeclass.Hs.h_max
 
+    # Matrix of the true energies E_true
     trues = np.reshape(vqeclass.Hs.true_e0, (sidex, sidey))
+    # Matrix of the VQE energies E_pred
     preds = np.reshape(vqeclass.vqe_e0,  (sidex, sidey))
+
+    # Accuracy := |E_true - E_pred|/|E_true|
 
     x = np.linspace(-max_x, 0, sidex)
     y = np.linspace(0, max_y, sidey)
@@ -250,8 +295,10 @@ def VQE_show_annni(vqeclass, log_heatmap = False, plot3d=True, phase_lines = Fal
         fig.update_layout(height=500)
         fig.show()
 
+    # Add the default layout (axes limits, names, ticks...)
     plot_layout(vqeclass.Hs, pe_line=pe_line, phase_lines=phase_lines, title = r"VQE,     $N = {0}$".format(str(vqeclass.Hs.N)))
 
+    # Accuracy := |E_true - E_pred|/|E_true|
     accuracy = np.rot90(np.abs(preds - trues) / np.abs(trues))
     
     if not log_heatmap:
@@ -279,28 +326,69 @@ def VQE_show_annni(vqeclass, log_heatmap = False, plot3d=True, phase_lines = Fal
         cbar.ax.tick_params(labelsize=16)
 
 def VQE_psi_truepsi_fidelity(vqeclass, phase_lines = False, pe_line = False):
+    """
+    For each VQE resulting state, show its fidelity compared to its true state obtained through diagonalization of the Hamiltonian:
+
+    Parameters
+    ----------
+    vqeclass : vqe.vqe
+        Custom VQE class after being trained
+    phase_lines : bool
+        if True plots the phase transition lines
+    pe_line : bool
+        if True plots Peshel Emery line
+    """
 
     sidex = vqeclass.Hs.n_kappas
     sidey = vqeclass.Hs.n_hs
 
+    # Prepare the quantum circuit to output the state
     @qml.qnode(vqeclass.device, interface="jax")
     def q_vqe_state(vqe_params):
         vqeclass.circuit(vqe_params)
 
         return qml.state()
 
+    # Jit and vmapped function to compute the fidelity
     jv_fidelity = jax.jit(lambda true, pars: losses.vqe_fidelities(true, pars, q_vqe_state))
     
     fidelity_map = jv_fidelity(vqeclass.Hs.true_psi0, vqeclass.vqe_params0) 
     fidelity_map = np.reshape(fidelity_map, (sidex, sidey))
 
-    plt.figure(figsize=(8, 6), dpi=80)
     plot_layout(vqeclass.Hs, phase_lines=phase_lines, pe_line=pe_line, title=r"Fidelities,     $N = {0}$".format(str(vqeclass.Hs.N)))
     plt.imshow(np.rot90(fidelity_map), aspect = vqeclass.Hs.n_kappas / vqeclass.Hs.n_hs)
     cbar = plt.colorbar(fraction=0.04)
     cbar.ax.tick_params(labelsize=16) 
 
 def VQE_fidelity_slice(vqeclass, slice_value, axis = 0, truestates = False):
+    """
+    Shows confusion matrix of fidelities of only a 'slice' of states in the parameter space.
+    In other words, it will be computed the fidelity of each state among every other that share
+    the same h or kappa.
+
+    Parameters
+    ----------
+    vqeclass : vqe.vqe
+        Custom VQE class after being trained
+    slice_value : float
+        if axis = 0, then we will pick only the states having h = slice_value and kappa whatever
+        if axis = 1, then we will pick only the states having kappa = slice_value and h whatever
+    axis : int
+        Direction of where to slide, 0 is horizontal (fixed h), 1 is vertical (fixed kappa)
+    truestates : bool
+        if True the true states will be employed
+        if False the VQE states will be employed
+    """
+    #########################################################
+    # 1. Show the parameter space and the line of the slice #
+    #########################################################
+    if axis == 0:
+        plt.axhline(y = sidey - slice_value*sidey/ymax - .5, color='blue', lw=2)
+    elif axis == 1:
+        plt.axvline(x = slice_value*sidex/xmax - .5, color='blue', lw=2)
+    else:
+        raise ValueError('Invalid axis, it can only be either 0 or 1')
+
     vqeclass.Hs.show_phasesplot()
     
     sidey, ymax = vqeclass.Hs.n_hs, vqeclass.Hs.h_max
@@ -309,13 +397,11 @@ def VQE_fidelity_slice(vqeclass, slice_value, axis = 0, truestates = False):
     ticks_x = [-.5 , vqeclass.Hs.n_kappas/4 - .5, vqeclass.Hs.n_kappas/2 - .5 , 3*vqeclass.Hs.n_kappas/4 - .5, vqeclass.Hs.n_kappas - .5]
     ticks_y = [-.5 , vqeclass.Hs.n_hs/4 - .5, vqeclass.Hs.n_hs/2 - .5 , 3*vqeclass.Hs.n_hs/4 - .5, vqeclass.Hs.n_hs - .5]
 
-    if axis == 0:
-        plt.axhline(y = sidey - slice_value*sidey/ymax - .5, color='blue', lw=2)
-    else:
-        plt.axvline(x = slice_value*sidex/xmax - .5, color='blue', lw=2)
-
     plt.show()
 
+    ############################################################
+    # 2. Show the confusion matrix of fidelities of the states #
+    ############################################################
     def create_confusion_matrix(vectors):
         dimvec = len(vectors)
         c_matrix = np.zeros((dimvec, dimvec))
@@ -333,7 +419,6 @@ def VQE_fidelity_slice(vqeclass, slice_value, axis = 0, truestates = False):
     # H : 2 = index : side -> index = H * side / 2
     starting_index = slice_value * vqeclass.Hs.n_hs / vqeclass.Hs.h_max
     
-    #print(indexes)
     if axis == 0:
         indexes = np.arange(starting_index,sidex*sidey,sidey).astype(int)
         print(indexes)
@@ -366,19 +451,21 @@ def VQE_fidelity_slice(vqeclass, slice_value, axis = 0, truestates = False):
         title = f'k = {slice_value}'
     
     if truestates:
+        # Check if we computed the true states, if not compute them
         try:
             vqeclass.Hs.true_psi0
         except:
+            # Compute vqeclass.Hs.true_psi0
             vqeclass.Hs.add_true()
         confusion = create_confusion_matrix(np.array(vqeclass.Hs.true_psi0)[indexes])
     else:
+        # Quantum circuit for computing the states from the parameters
         @qml.qnode(vqeclass.device, interface="jax")
         def q_vqe_state(vqe_params):
             vqeclass.circuit(vqe_params)
 
             return qml.state()
 
-        
         vqe_psi0 = jax.jit(jax.vmap(q_vqe_state, in_axes=(0)))(vqeclass.vqe_params0[indexes])
         confusion = create_confusion_matrix(vqe_psi0)
 
@@ -407,28 +494,31 @@ def VQE_fidelity_slice(vqeclass, slice_value, axis = 0, truestates = False):
                                                    
 def QCNN_classification_ising(qcnnclass, train_index):
     """
-    Plots performance of the classifier on the whole data
+    Plots performance of the classifier on the whole data for a QCNN of a Nearest Neighbour Interaction Hamiltonian
+
+    Parameters
+    ----------
+    qcnnclass : qcnn.qcnn
+        Custom QCNN class after being trained
+    train_index : List[Number]
+        List of the indexes of the training set. On displaying they will be marked with a different colour
     """
 
-    circuit = qcnnclass._vqe_qcnn_circuit
-
+    # Quantum Circuit to output the probabilities
     @qml.qnode(qcnnclass.device, interface="jax")
     def qcnn_circuit_prob(params_vqe, params):
-        circuit(params_vqe, params)
+        qcnnclass._vqe_qcnn_circuit(params_vqe, params)
 
         return qml.probs(wires=qcnnclass.N - 1)
 
+    vcircuit = jax.vmap(lambda v: qcnn_circuit_prob(v, qcnnclass.params), in_axes=(0))
+    predictions = vcircuit(qcnnclass.vqe_params)[:, 1]
+    
+    # The test index is the set difference of the whole dataset and the training set
     test_index = np.setdiff1d(np.arange(len(qcnnclass.vqe_params)), train_index)
 
-    predictions_train = []
-    predictions_test = []
-
-    colors_train = []
-    colors_test = []
-
-    vcircuit = jax.vmap(lambda v: qcnn_circuit_prob(v, qcnnclass.params), in_axes=(0))
-
-    predictions = vcircuit(qcnnclass.vqe_params)[:, 1]
+    predictions_train, colors_train = [], []
+    predictions_test,  colors_test  = [], []
 
     for i, prediction in enumerate(predictions):
         # if data in training set
@@ -462,7 +552,6 @@ def QCNN_classification_ising(qcnnclass, train_index):
     ax[0].axvline(x=1, color="gray", linestyle="--")
     ax[0].text(0.375, 0.68, "I", fontsize=24, fontfamily="serif")
     ax[0].text(1.6, 0.68, "II", fontsize=24, fontfamily="serif")
-    # ax[0].set_xlabel("Transverse field")
     ax[0].set_ylabel("Prediction of label II")
     ax[0].set_title("Predictions of labels; J = 1")
     ax[0].scatter(
@@ -486,7 +575,6 @@ def QCNN_classification_ising(qcnnclass, train_index):
     ax[1].axvline(x=1, color="gray", linestyle="--")
     ax[1].text(0.375, 0.68, "I", fontsize=24, fontfamily="serif")
     ax[1].text(1.6, 0.68, "II", fontsize=24, fontfamily="serif")
-    # ax[1].set_xlabel("Transverse field")
     ax[1].set_ylabel("Prediction of label II")
     ax[1].set_title("Predictions of labels; J = 1")
     ax[1].scatter(
@@ -502,18 +590,23 @@ def QCNN_classification_ising(qcnnclass, train_index):
 
 def QCNN_classification_ANNNI_marginal(qcnnclass):
     """
-    Plots performance of the classifier on the whole data
+    Displays the probabilities of the states on the two axes. 
+    It is used more as a debug function to test if the classes are being
+    trained correctly.
+
+    Parameters
+    ----------
+    qcnnclass : qcnn.qcnn
+        Custom QCNN class after being trained
     """
 
     @qml.qnode(qcnnclass.device, interface="jax")
     def qcnn_circuit_prob(params_vqe, params):
         qcnnclass._vqe_qcnn_circuit(params_vqe, params)
 
-        if qcnnclass.n_outputs == 1:
-            return qml.probs(wires=qcnnclass.N - 1)
-        else:
-            return [qml.probs(wires=int(k)) for k in qcnnclass.final_active_wires]
+        return [qml.probs(wires=int(k)) for k in qcnnclass.final_active_wires]
 
+    # Subset of the states on the two axes
     mask1 = jnp.array(qcnnclass.vqe.Hs.model_params)[:, 1] == 0
     mask2 = jnp.array(qcnnclass.vqe.Hs.model_params)[:, 2] == 0
     
@@ -585,6 +678,22 @@ def QCNN_classification_ANNNI(
     label=False,
     info=False,
 ):
+    """
+    Plots performance of the classifier on the whole data for a QCNN of a ANNI model
+
+    Parameters
+    ----------
+    qcnnclass : qcnn.qcnn
+        Custom QCNN class after being trained
+    hard_thr : bool 
+        if True the prediction will be displayed through an argmax instead of using color channels to entail the 3 (4 considering the trash case) probabilities
+    predicted_line : bool
+        if True it displays the predicted transition line
+    label : str
+        Label to assign to the picture, needed for the paper
+    info : bool
+        if True more infos will be displayed such as the names of the phases
+    """
 
     plt.figure(figsize=(8, 6), dpi=80)
     
@@ -665,7 +774,18 @@ def QCNN_classification_ANNNI(
                                
 def ENC_show_compression_ANNNI(encclass, trainingpoint=False, label=False, plot3d=False):
     """
-    Shows result of compression of the Anomaly Detector
+    Plots performance of the compression on the whole data for an encoder on the ANNI model
+
+    Parameters
+    ----------
+    encoder : encoder.encoder
+        Custom encoder class after being trained
+    trainingpoint : int
+        Mark the single training point on the plot 
+    label : str
+        Label to assign to the picture, needed for the paper
+    plot3d : bool
+        If True the 3D plot will be displayed aswell
     """
 
     sidex = encclass.vqe.Hs.n_kappas
@@ -698,11 +818,11 @@ def ENC_show_compression_ANNNI(encclass, trainingpoint=False, label=False, plot3
     plot_layout(encclass.vqe.Hs, pe_line=True, phase_lines=True, title='')
     plt.imshow(exps, aspect = encclass.vqe.Hs.n_kappas / encclass.vqe.Hs.n_hs)
     if type(trainingpoint) == int:
-        train_x = trainingpoint // sidex
+        train_x = trainingpoint // sidey
         train_y = sidey - trainingpoint % sidey
+
         if train_x == 0:
             train_x += 1
-            print(train_x)
         if train_y == sidey:
             train_y -= 2
 
