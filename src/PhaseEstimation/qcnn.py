@@ -9,7 +9,7 @@ from matplotlib import pyplot as plt
 
 import copy, tqdm, pickle
 
-from PhaseEstimation import circuits, vqe, general as qmlgen
+from PhaseEstimation import circuits, vqe, general as qmlgen, ising_chain as ising, annni_model as annni, visualization as qplt
 
 from typing import Tuple, List, Callable
 from numbers import Number
@@ -285,6 +285,63 @@ class qcnn:
             plt.grid(True)
             plt.legend()
 
+    def predict(self):
+        """
+        Get the phases probabilities for each VQE state
+
+        Returns
+        -------
+        List[List[Number]]
+            List of probabilities
+        """
+        @qml.qnode(self.device, interface="jax")
+        def qcnn_circuit_prob(params_vqe, params):
+            self._vqe_qcnn_circuit(params_vqe, params)
+
+            return qml.probs([int(k) for k in self.final_active_wires])
+
+        vcircuit = jax.vmap(
+            lambda v: qcnn_circuit_prob(v, self.params), in_axes=(0)
+        )
+
+        predictions = np.array(vcircuit(self.vqe_params))
+
+        return predictions
+
+    def predict_lines(self, predictions = []):
+        """
+        Get the prdicted phase-transition line
+
+        Parameters
+        ----------
+        predictions : List[List[Number]]
+            This is the output of self.predict(), if it is not passed, the predictions will be computed asnew
+
+        Returns
+        -------
+        List[Number]
+            y-coordinate of the transition point for each kappa value
+        """
+        sidex, sidey = self.vqe.Hs.n_kappas, self.vqe.Hs.n_hs
+        print(sidex,sidey)
+        if len(predictions) == 0:
+            predictions = self.predict()
+
+        predictions = np.reshape(np.argmax(predictions,axis=1), (sidex,sidey))
+        line_trans = []
+
+        for col in range(sidex):
+            y_cord_trans = 0
+            for row in range(sidey-1,-1,-1):
+                prediction = predictions[col,row]
+                if prediction != 3:
+                    break
+                y_cord_trans += 1
+
+            line_trans.append(y_cord_trans)
+
+        return np.array(line_trans)
+
     def save(self, filename: str):
         """
         Saves QCNN parameters to file
@@ -301,6 +358,15 @@ class qcnn:
                 pickle.dump(things_to_save, f)
         else:
             raise TypeError("Invalid name for file")
+
+
+    def show(self, train_index = [], marginal = False, **kwargs):
+        if self.vqe.Hs.func == ising.build_Hs:
+            qplt.QCNN_classification_ising(self, train_index)
+        elif self.vqe.Hs.func == annni.build_Hs:
+            if marginal:
+                qplt.QCNN_classification_ANNNI_marginal(self)
+            qplt.QCNN_classification_ANNNI(self, **kwargs)
 
 
 def load(filename_vqe: str, filename_qcnn: str) -> qcnn:

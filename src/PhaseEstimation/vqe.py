@@ -18,6 +18,8 @@ warnings.filterwarnings(
 
 from PhaseEstimation import circuits, losses, hamiltonians
 from PhaseEstimation import general as qmlgen
+from PhaseEstimation import annni_model as annni, ising_chain as ising
+from PhaseEstimation import visualization as qplt
 
 from typing import List, Callable
 from numbers import Number
@@ -80,6 +82,38 @@ def circuit_ising2(N: int, params: List[Number]) -> int:
     index = 0
     qml.Barrier()
     for _ in range(9):
+        index = circuits.circuit_ID9(active_wires, params, index)
+        qml.Barrier()
+
+    index = circuits.wall_gate(active_wires, qml.RX, params, index)
+    index = circuits.wall_gate(active_wires, qml.RY, params, index)
+
+    return index
+
+def circuit_ising3(N: int, params: List[Number]) -> int:
+    """
+    Shorter and more real circuit
+
+    Parameters
+    ----------
+    N : int
+        Number of qubits
+    params: np.ndarray
+        Array of parameters/rotation for the circuit
+
+    Returns
+    -------
+    int
+        Total number of parameters needed to build this circuit
+    """
+    # No wire will be measured until the end, the array of active
+    # wire will correspont to np.arange(N) throughout the whole circuit
+    active_wires = np.arange(N)
+    index = 0
+    index = circuits.wall_gate(active_wires, qml.RY, params, index)
+    index = circuits.wall_gate(active_wires, qml.RX, params, index)
+    qml.Barrier()
+    for _ in range(3):
         index = circuits.circuit_ID9(active_wires, params, index)
         qml.Barrier()
 
@@ -207,16 +241,17 @@ class vqe:
             Neighbouring indexes
         """
 
-        side = self.Hs.side
+        side_x = self.Hs.n_kappas
+        side_y = self.Hs.n_hs
 
-        neighbours = np.array([idx + 1, idx - 1, idx + side, idx - side])
+        neighbours = np.array([idx + 1, idx - 1, idx + side_y, idx - side_y])
         neighbours = np.delete(
             neighbours, np.logical_not(np.isin(neighbours, self.Hs.recycle_rule))
         )
 
-        if (idx + 1) % side == 0 and idx != self.Hs.n_states - 1:
+        if (idx + 1) % side_y == 0 and idx != self.Hs.n_states - 1:
             neighbours = np.delete(neighbours, 0)
-        if (idx) % side == 0 and idx != 0:
+        if (idx) % side_y == 0 and idx != 0:
             neighbours = np.delete(neighbours, 1)
 
         return neighbours
@@ -230,7 +265,7 @@ class vqe:
         # > H: Hamiltonian of the model
         # > H_eff: Effective Hamiltonian for the model (H +|psi><psi|)
         # > site: index for (L,K) combination
-        H, self.true_e0[site] = qmlgen.get_VQE_params(self.Hs.qml_Hs[site])
+        H, self.Hs.true_e0[site] = qmlgen.get_VQE_params(self.Hs.qml_Hs[site])
 
         index = [site]
         param = copy.copy(self.vqe_params0[index])
@@ -243,27 +278,6 @@ class vqe:
 
         self.vqe_e0[site] = self.jv_compute_vqe_E(self.jv_q_vqe_state(param), H)
         self.vqe_params0[site] = param
-
-    def train_site_excited(self, lr: Number, n_epochs: int, site: int, beta: Number):
-        """
-        Minimize <psi|H|psi> + beta|<psi|psi_0>|^2 for a single site
-        """
-        # Get all the necessary training parameters for the VQD algorithm
-        # > H: Hamiltonian of the model
-        # > H_eff: Effective Hamiltonian for the model (H +|psi><psi|)
-        # > site: index for (L,K) combination
-        H, H_eff, self.true_e1[site] = qmlgen.get_VQD_params(self.Hs.qml_Hs[site], beta)
-
-        param = copy.copy(self.vqe_params1[[site]])
-        opt_init, opt_update, get_params = optimizers.adam(lr)
-        opt_state = opt_init(param)
-        for _ in range(n_epochs):
-            param, opt_state = self._update(
-                param, H_eff, opt_state, opt_update, get_params
-            )
-
-        self.vqe_e1[site] = self.jv_compute_vqe_E(self.jv_q_vqe_state(param), H)
-        self.vqe_params1[site] = param
 
     def train(self, lr: Number, n_epochs: int, circuit: bool = False):
         """
@@ -293,6 +307,11 @@ class vqe:
             np.zeros((self.Hs.n_states, self.n_params)),
             np.zeros((self.Hs.n_states,)),
         )
+
+        try:
+            self.Hs.true_e0
+        except:
+            self.Hs.true_e0 = np.array([0.]*len(self.Hs.recycle_rule))
 
         progress = tqdm(self.Hs.recycle_rule, position=0, leave=True)
         # Site will follow the order of Hs.recycle rule:
@@ -326,59 +345,6 @@ class vqe:
                 self.vqe_params0[site] = copy.copy(self.vqe_params0[pred_site])
 
             self.train_site(lr, epochs, int(site))
-            self.true_e0[site]
-            pred_site = site  # Previous site for next training
-
-    def train_excited(
-        self, lr: Number, n_epochs: int, beta: Number, circuit: bool = False
-    ):
-        """
-        Training function through VQD.
-        VQD is trained finding psi such that:
-        <psi|H|psi> + beta*|<psi_0|psi>|**2
-        is minimized.
-
-        Parameters
-        ----------
-        lr : float
-            Learning rate to be multiplied in the circuit-gradient output
-        n_epochs : int
-            Total number of epochs for each learning
-        beta : float
-            Importance (regularization strenght) given to the orthogonalization with psi_0
-        circuit : bool
-            if True -> Prints the circuit
-        """
-        pred_site: int
-
-        if circuit:
-            # Display the circuit
-            print("+--- CIRCUIT ---+")
-            print(self)
-
-        # Initialize parameters
-        self.vqe_e1, self.vqe_params1, self.true_e1 = (
-            np.zeros((self.Hs.n_states,)),
-            np.zeros((self.Hs.n_states, self.n_params)),
-            np.zeros((self.Hs.n_states,)),
-        )
-
-        progress = tqdm(self.Hs.recycle_rule, position=0, leave=True)
-        for site in progress:
-            # First site will be trained more since it starts from a
-            # random configuration of parameters
-            if site == 0:
-                epochs = 10 * n_epochs
-                # Random initial state
-                self.vqe_params1[site] = jnp.array(
-                    np.random.uniform(-np.pi, np.pi, size=(self.n_params))
-                )
-            else:
-                epochs = n_epochs
-                # Initial state is the final state of last site trained
-                self.vqe_params1[site] = copy.copy(self.vqe_params1[pred_site])
-
-            self.train_site_excited(lr, epochs, int(site), beta)
             pred_site = site  # Previous site for next training
 
     def train_refine(
@@ -427,56 +393,71 @@ class vqe:
 
             progress.update(1)
 
-    def train_refine_excited(
-        self,
-        lr: Number,
-        n_epochs: int,
-        acc_thr: Number,
-        beta: Number,
-        assist: bool = False,
-    ):
+    def show(self, **kwargs):
         """
-        Training only the sites that have an accuracy score worse (higher) than acc_thr
-        for the excited states
+        Shows results of a trained VQE (ANNNI) run:
 
         Parameters
         ----------
-        lr : float
-            Learning rate to be multiplied in the circuit-gradient output
-        n_epochs : int
-            Total number of epochs for each learning
-        acc_thr : float
-            Accuracy threshold for which selecting the sites to train
-        assist : bool
-            if True -> Each site that will be trained will start from the neighbouring site
-            that has the better accuracy
+        log_heatmap : bool
+            (IF ANNNI) if True, the accuracy is displayed in logscale
+        plot3d : bool
+            (IF ANNNI) if True the predicted energies and true energies will be displayed in a 3D plot
+        phase_lines : bool
+            (IF ANNNI) if True plots the phase transition lines
+        pe_line : bool
+            (IF ANNNI) if True plots Peshel Emery line
         """
-        progress = tqdm(range(self.Hs.n_states), position=0, leave=True)
-        # Select the sites to train based on their accuracy score
-        for site in self.Hs.recycle_rule:
-            # Accuracy value of the given site
-            accuracy = np.abs(
-                (self.vqe_e1[site] - self.true_e1[site]) / self.true_e1[site]
-            )
 
-            if accuracy > acc_thr:  # If the accuracy is bad (higher than threshold)...
-                # if assist we copy the state from the best neighbouring site and
-                # starting training from there
-                if assist:
-                    # Array of indexes of neighbouring sites
-                    neighbours = np.array(self._get_neighbours(site))
-                    # Array of their respective accuracies
-                    neighbours_accuracies = np.abs(
-                        (self.vqe_e1[neighbours] - self.true_e1[neighbours])
-                        / self.true_e1[neighbours]
-                    )
-                    # Select the index of the neighbour with the best (lowest) accuracy score
-                    best_neighbour = neighbours[np.argmin(neighbours_accuracies)]
-                    self.vqe_params1[site] = copy.copy(self.vqe_params1[best_neighbour])
-                # Start training the site
-                self.train_site_excited(lr, n_epochs, int(site), beta)
+        # Checks wether we are dealing with an isingchain (1D parameter space: mu)
+        # or an annni model (2D parameter space: (kappa, h))
+        if self.Hs.func == ising.build_Hs:
+            qplt.VQE_show_isingchain(self)
+        elif self.Hs.func == annni.build_Hs:
+            qplt.VQE_show_annni(self, **kwargs)
 
-            progress.update(1)
+    def show_fidelity(self, **kwargs):
+        """
+        For each VQE resulting state, show its fidelity compared to its true state obtained through diagonalization of the Hamiltonian:
+
+        Parameters
+        ----------
+        phase_lines : bool
+            if True plots the phase transition lines
+        pe_line : bool
+            if True plots Peshel Emery line
+        """
+        # Checks wether we are dealing with an isingchain (1D parameter space: mu)
+        # or an annni model (2D parameter space: (kappa, h))
+        if self.Hs.func == ising.build_Hs:
+            raise Exception("Function not implemented for this type of VQE")
+        elif self.Hs.func == annni.build_Hs:
+            qplt.VQE_psi_truepsi_fidelity(self, **kwargs)
+
+    def show_fidelity_slice(self, slice_value, axis = 0, truestates = False):
+        """
+        Shows confusion matrix of fidelities of only a 'slice' of states in the parameter space.
+        In other words, it will be computed the fidelity of each state among every other that share
+        the same h or kappa.
+
+        Parameters
+        ----------
+        slice_value : float
+            if axis = 0, then we will pick only the states having h = slice_value and kappa whatever
+            if axis = 1, then we will pick only the states having kappa = slice_value and h whatever
+        axis : int
+            Direction of where to slide, 0 is horizontal (fixed h), 1 is vertical (fixed kappa)
+        truestates : bool
+            if True the true states will be employed
+            if False the VQE states will be employed
+        """
+
+        # Checks wether we are dealing with an isingchain (1D parameter space: mu)
+        # or an annni model (2D parameter space: (kappa, h))
+        if self.Hs.func == ising.build_Hs:
+            raise Exception("Function not implemented for this type of VQE")
+        elif self.Hs.func == annni.build_Hs:
+            qplt.VQE_fidelity_slice(self, slice_value, axis = axis, truestates = truestates)
 
     def save(self, filename: str):
         """
@@ -492,31 +473,12 @@ class vqe:
 
         if not isinstance(filename, str):
             raise TypeError("Invalid name for file")
-
-        # Check if the VQE was trained for excited states aswell:
-        excited = True
-        try:
-            self.vqe_params1
-        except:
-            excited = False
-
-        if not excited:
-            things_to_save = [
+            
+        things_to_save = [
                 self.Hs,
                 self.vqe_params0,
                 self.vqe_e0,
                 self.true_e0,
-                self.circuit_fun,
-            ]
-        else:
-            things_to_save = [
-                self.Hs,
-                self.vqe_params0,
-                self.vqe_e0,
-                self.true_e0,
-                self.vqe_params1,
-                self.vqe_e1,
-                self.true_e1,
                 self.circuit_fun,
             ]
 
@@ -559,6 +521,8 @@ def load_vqe(filename: str) -> vqe:
             circuit_fun,
         ) = things_to_load
         loaded_vqe = vqe(Hs, circuit_fun)
+
+        warnings.warn("Outdated VQE: VQD parameters loaded")
         loaded_vqe.vqe_params1 = vqe_params1
         loaded_vqe.vqe_e1 = vqe_e1
         loaded_vqe.true_e1 = true_e1

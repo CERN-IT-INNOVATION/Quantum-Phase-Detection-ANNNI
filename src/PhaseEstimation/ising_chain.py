@@ -106,4 +106,10 @@ def build_Hs(
         np.array(recycle_rule),
         np.array(ising_params),
         n_states,
+        # The output of this class must match with the one of the annni_model class
+        # so we must return these values as well for the sake of generality
+        n_states, 
+        1, 
+        2, 
+        0
     )
