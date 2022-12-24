@@ -57,7 +57,12 @@ def get_H(
 
 
 def build_Hs(
-    N: int, n_hs: int, n_kappas: int, h_max: float = 2, kappa_max: float = 1, ring: bool = False
+    N: int,
+    n_hs: int,
+    n_kappas: int,
+    h_max: float = 2,
+    kappa_max: float = 1,
+    ring: bool = False,
 ) -> Tuple[
     List[qml.ops.qubit.hamiltonian.Hamiltonian],
     List[List[int]],
@@ -101,7 +106,7 @@ def build_Hs(
 
     # Set up arrays of the parameters K and Ls
     kappa_values = np.linspace(0, -np.abs(kappa_max), n_kappas)
-    h_values     = np.linspace(0,  h_max, n_hs)
+    h_values = np.linspace(0, h_max, n_hs)
 
     Hs = []  # Array of the Pennylane hamiltonians
     labels = []  # Array of the labels:
@@ -151,7 +156,9 @@ def build_Hs(
             break
         # k_index = 1 (going down)
         # [9, 8, 7, 6, 5]
-        recycle_rule.append(np.arange((k_index + 1) * n_hs - 1, k_index * n_hs - 1, -1).astype(int))
+        recycle_rule.append(
+            np.arange((k_index + 1) * n_hs - 1, k_index * n_hs - 1, -1).astype(int)
+        )
         k_index += 1
         if k_index >= n_kappas:
             break
@@ -162,5 +169,8 @@ def build_Hs(
         np.array(recycle_rule).flatten(),
         np.array(anni_params),
         n_hs * n_kappas,
-        n_hs, n_kappas, h_max, kappa_max,
+        n_hs,
+        n_kappas,
+        h_max,
+        kappa_max,
     )

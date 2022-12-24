@@ -24,16 +24,15 @@ rc("font", **{"family": "sans-serif", "sans-serif": ["Helvetica"]})
 rc("font", **{"family": "serif", "serif": ["Computer Modern Roman"]})
 rc("text", usetex=True)
 
-#  __           _______  _______ .__   __.  _______ .______          ___       __      
-# /_ |         /  _____||   ____||  \ |  | |   ____||   _  \        /   \     |  |     
-#  | |        |  |  __  |  |__   |   \|  | |  |__   |  |_)  |      /  ^  \    |  |     
-#  | |        |  | |_ | |   __|  |  . `  | |   __|  |      /      /  /_\  \   |  |     
+#  __           _______  _______ .__   __.  _______ .______          ___       __
+# /_ |         /  _____||   ____||  \ |  | |   ____||   _  \        /   \     |  |
+#  | |        |  |  __  |  |__   |   \|  | |  |__   |  |_)  |      /  ^  \    |  |
+#  | |        |  | |_ | |   __|  |  . `  | |   __|  |      /      /  /_\  \   |  |
 #  | |  __    |  |__| | |  |____ |  |\   | |  |____ |  |\  \----./  _____  \  |  `----.
 #  |_| (__)    \______| |_______||__| \__| |_______|| _| `._____/__/     \__\ |_______|
-                                                                                     
-def getlines_from_Hs(
-    Hs, func: Callable, xrange: List[float], res: int = 100, **kwargs
-):
+
+
+def getlines_from_Hs(Hs, func: Callable, xrange: List[float], res: int = 100, **kwargs):
     """
     Plot function func from xrange[0] to xrange[1]
     This function uses the Hamiltonians class to plot the function 
@@ -55,20 +54,21 @@ def getlines_from_Hs(
     # (func needs to be resized)
     side_x = Hs.n_kappas
     side_y = Hs.n_hs
-    max_x  = Hs.kappa_max
+    max_x = Hs.kappa_max
 
     yrange = [0, Hs.h_max]
-    
+
     xs = np.linspace(xrange[0], xrange[1], res)
     ys = func(xs)
 
     ys[ys > yrange[1]] = yrange[1]
-    
-    corrected_xs = (side_x * xs / max_x - 0.5)
+
+    corrected_xs = side_x * xs / max_x - 0.5
 
     plt.plot(corrected_xs, side_y - ys * side_y / yrange[1] - 0.5, **kwargs)
 
-def plot_layout(Hs, pe_line, phase_lines, title, figure_already_defined = False):
+
+def plot_layout(Hs, pe_line, phase_lines, title, figure_already_defined=False):
     """
     Many plotting functions here have the same layout, this function will be called inside the others
     to have a standard layout
@@ -95,46 +95,75 @@ def plot_layout(Hs, pe_line, phase_lines, title, figure_already_defined = False)
     plt.xlabel(r"$\kappa$", fontsize=24)
     plt.tick_params(axis="x", labelsize=18)
     plt.tick_params(axis="y", labelsize=18)
-    ticks_x = [-.5 , Hs.n_kappas/4 - .5, Hs.n_kappas/2 - .5 , 3*Hs.n_kappas/4 - .5, Hs.n_kappas - .5]
-    ticks_y = [-.5 , Hs.n_hs/4 - .5, Hs.n_hs/2 - .5 , 3*Hs.n_hs/4 - .5, Hs.n_hs - .5]
+    ticks_x = [
+        -0.5,
+        Hs.n_kappas / 4 - 0.5,
+        Hs.n_kappas / 2 - 0.5,
+        3 * Hs.n_kappas / 4 - 0.5,
+        Hs.n_kappas - 0.5,
+    ]
+    ticks_y = [
+        -0.5,
+        Hs.n_hs / 4 - 0.5,
+        Hs.n_hs / 2 - 0.5,
+        3 * Hs.n_hs / 4 - 0.5,
+        Hs.n_hs - 0.5,
+    ]
     plt.xticks(
-        ticks= ticks_x,
-        labels=[np.round(k * Hs.kappa_max  / 4, 2) for k in range(0, 5)],
+        ticks=ticks_x, labels=[np.round(k * Hs.kappa_max / 4, 2) for k in range(0, 5)],
     )
     plt.yticks(
-        ticks=ticks_y,
-        labels=[np.round(k * Hs.h_max / 4, 2) for k in range(4, -1, -1)],
+        ticks=ticks_y, labels=[np.round(k * Hs.h_max / 4, 2) for k in range(4, -1, -1)],
     )
 
     if pe_line:
-        getlines_from_Hs(Hs, qmlgen.peshel_emery, [0, 0.5], res=100, color = "blue", alpha=1, ls = '--', dashes=(4,5), label = 'Peshel-Emery line')
-        
+        getlines_from_Hs(
+            Hs,
+            qmlgen.peshel_emery,
+            [0, 0.5],
+            res=100,
+            color="blue",
+            alpha=1,
+            ls="--",
+            dashes=(4, 5),
+            label="Peshel-Emery line",
+        )
+
     if phase_lines:
-        getlines_from_Hs(Hs, qmlgen.paraanti, [0.5, Hs.kappa_max], res=100, color = "red", label = 'Phase-transition\n lines')
-        getlines_from_Hs(Hs, qmlgen.paraferro, [0, 0.5], res=100, color = "red")
-    
+        getlines_from_Hs(
+            Hs,
+            qmlgen.paraanti,
+            [0.5, Hs.kappa_max],
+            res=100,
+            color="red",
+            label="Phase-transition\n lines",
+        )
+        getlines_from_Hs(Hs, qmlgen.paraferro, [0, 0.5], res=100, color="red")
+
     if len(title) > 0:
         leg = plt.legend(
-                bbox_to_anchor=(1, 1),
-                loc="upper right",
-                fontsize=16,
-                facecolor="white",
-                markerscale=1,
-                framealpha=0.9,
-                title=title,
-                title_fontsize=16,
-            )
-    
+            bbox_to_anchor=(1, 1),
+            loc="upper right",
+            fontsize=16,
+            facecolor="white",
+            markerscale=1,
+            framealpha=0.9,
+            title=title,
+            title_fontsize=16,
+        )
+
     plt.tight_layout()
+
 
 #  ___           __    __       ___      .___  ___.  __   __      .___________.  ______   .__   __.  __       ___      .__   __.      _______.
 # |__ \         |  |  |  |     /   \     |   \/   | |  | |  |     |           | /  __  \  |  \ |  | |  |     /   \     |  \ |  |     /       |
 #    ) |        |  |__|  |    /  ^  \    |  \  /  | |  | |  |     `---|  |----`|  |  |  | |   \|  | |  |    /  ^  \    |   \|  |    |   (----`
-#   / /         |   __   |   /  /_\  \   |  |\/|  | |  | |  |         |  |     |  |  |  | |  . `  | |  |   /  /_\  \   |  . `  |     \   \    
-#  / /_   __    |  |  |  |  /  _____  \  |  |  |  | |  | |  `----.    |  |     |  `--'  | |  |\   | |  |  /  _____  \  |  |\   | .----)   |   
-# |____| (__)   |__|  |__| /__/     \__\ |__|  |__| |__| |_______|    |__|      \______/  |__| \__| |__| /__/     \__\ |__| \__| |_______/    
-                                                                                                                                            
-def HAM_mass_gap(Hs, phase_lines = False, pe_line = False):
+#   / /         |   __   |   /  /_\  \   |  |\/|  | |  | |  |         |  |     |  |  |  | |  . `  | |  |   /  /_\  \   |  . `  |     \   \
+#  / /_   __    |  |  |  |  /  _____  \  |  |  |  | |  | |  `----.    |  |     |  `--'  | |  |\   | |  |  /  _____  \  |  |\   | .----)   |
+# |____| (__)   |__|  |__| /__/     \__\ |__|  |__| |__| |_______|    |__|      \______/  |__| \__| |__| /__/     \__\ |__| \__| |_______/
+
+
+def HAM_mass_gap(Hs, phase_lines=False, pe_line=False):
     """
     Shows the mass gap which is defined as the difference between the first excited leven and the ground energy level
     for each point in the parameter space.
@@ -148,19 +177,25 @@ def HAM_mass_gap(Hs, phase_lines = False, pe_line = False):
     pe_line : bool
         if True plots Peshel Emery line
     """
-    
+
     sidex = Hs.n_kappas
     sidey = Hs.n_hs
 
     # Compute the massgap
-    mass_gap = np.reshape(Hs.true_e1 - Hs.true_e0, (sidex, sidey) )
-    
-    plot_layout(Hs, phase_lines=phase_lines, pe_line=pe_line, title=r"Mass Gap,     $N = {0}$".format(str(Hs.N)))
+    mass_gap = np.reshape(Hs.true_e1 - Hs.true_e0, (sidex, sidey))
 
-    plt.imshow(np.rot90(mass_gap), aspect = Hs.n_kappas / Hs.n_hs)
+    plot_layout(
+        Hs,
+        phase_lines=phase_lines,
+        pe_line=pe_line,
+        title=r"Mass Gap,     $N = {0}$".format(str(Hs.N)),
+    )
+
+    plt.imshow(np.rot90(mass_gap), aspect=Hs.n_kappas / Hs.n_hs)
 
     cbar = plt.colorbar(fraction=0.04)
     cbar.ax.tick_params(labelsize=16)
+
 
 def HAM_phases_plot(Hs):
     """
@@ -174,8 +209,8 @@ def HAM_phases_plot(Hs):
 
     sidex = Hs.n_kappas
     sidey = Hs.n_hs
-    xs = np.linspace(0,Hs.kappa_max,sidex)
-    ys = np.linspace(0,Hs.h_max,sidey)
+    xs = np.linspace(0, Hs.kappa_max, sidex)
+    ys = np.linspace(0, Hs.h_max, sidey)
 
     # Mark every point of the parameter space to its corresponding phase according to the
     # state-of-the-art transition lines
@@ -187,7 +222,7 @@ def HAM_phases_plot(Hs):
                     phases.append(0)
                 else:
                     phases.append(1)
-            elif x <= .5:
+            elif x <= 0.5:
                 if y <= qmlgen.paraferro(x):
                     phases.append(0)
                 else:
@@ -197,21 +232,29 @@ def HAM_phases_plot(Hs):
                     phases.append(2)
                 else:
                     phases.append(1)
-                    
-    cmap = colors.ListedColormap(['palegreen', 'moccasin', 'lightblue'])
-    bounds=[0,1,2,3]
+
+    cmap = colors.ListedColormap(["palegreen", "moccasin", "lightblue"])
+    bounds = [0, 1, 2, 3]
     norm = colors.BoundaryNorm(bounds, cmap.N)
 
-    plot_layout(Hs, pe_line=False, phase_lines=True, title = r"State of the art phases plot")
-    plt.imshow(np.rot90(np.reshape(phases, (sidex,sidey))), cmap=cmap, norm = norm, aspect = Hs.n_kappas / Hs.n_hs)
+    plot_layout(
+        Hs, pe_line=False, phase_lines=True, title=r"State of the art phases plot"
+    )
+    plt.imshow(
+        np.rot90(np.reshape(phases, (sidex, sidey))),
+        cmap=cmap,
+        norm=norm,
+        aspect=Hs.n_kappas / Hs.n_hs,
+    )
 
-#  ____          ____    ____  ______      _______ 
+
+#  ____          ____    ____  ______      _______
 # |___ \         \   \  /   / /  __  \    |   ____|
-#   __) |         \   \/   / |  |  |  |   |  |__   
-#  |__ <           \      /  |  |  |  |   |   __|  
-#  ___) |  __       \    /   |  `--'  '--.|  |____ 
+#   __) |         \   \/   / |  |  |  |   |  |__
+#  |__ <           \      /  |  |  |  |   |   __|
+#  ___) |  __       \    /   |  `--'  '--.|  |____
 # |____/  (__)       \__/     \_____\_____\_______|
-#             
+#
 def VQE_show_isingchain(vqeclass):
     """
     Shows results of a trained VQE (Nearest Neighbour Ising Model) run
@@ -250,7 +293,10 @@ def VQE_show_isingchain(vqeclass):
 
     plt.tight_layout()
 
-def VQE_show_annni(vqeclass, log_heatmap = False, plot3d=True, phase_lines = False, pe_line = False):
+
+def VQE_show_annni(
+    vqeclass, log_heatmap=False, plot3d=True, phase_lines=False, pe_line=False
+):
     """
     Shows results of a trained VQE (ANNNI) run:
 
@@ -267,7 +313,7 @@ def VQE_show_annni(vqeclass, log_heatmap = False, plot3d=True, phase_lines = Fal
     pe_line : bool
         if True plots Peshel Emery line
     """
-    
+
     sidex = vqeclass.Hs.n_kappas
     sidey = vqeclass.Hs.n_hs
     max_x = vqeclass.Hs.kappa_max
@@ -276,7 +322,7 @@ def VQE_show_annni(vqeclass, log_heatmap = False, plot3d=True, phase_lines = Fal
     # Matrix of the true energies E_true
     trues = np.reshape(vqeclass.Hs.true_e0, (sidex, sidey))
     # Matrix of the VQE energies E_pred
-    preds = np.reshape(vqeclass.vqe_e0,  (sidex, sidey))
+    preds = np.reshape(vqeclass.vqe_e0, (sidex, sidey))
 
     # Accuracy := |E_true - E_pred|/|E_true|
 
@@ -296,11 +342,16 @@ def VQE_show_annni(vqeclass, log_heatmap = False, plot3d=True, phase_lines = Fal
         fig.show()
 
     # Add the default layout (axes limits, names, ticks...)
-    plot_layout(vqeclass.Hs, pe_line=pe_line, phase_lines=phase_lines, title = r"VQE,     $N = {0}$".format(str(vqeclass.Hs.N)))
+    plot_layout(
+        vqeclass.Hs,
+        pe_line=pe_line,
+        phase_lines=phase_lines,
+        title=r"VQE,     $N = {0}$".format(str(vqeclass.Hs.N)),
+    )
 
     # Accuracy := |E_true - E_pred|/|E_true|
     accuracy = np.rot90(np.abs(preds - trues) / np.abs(trues))
-    
+
     if not log_heatmap:
         colors_good = np.squeeze(
             np.dstack(
@@ -316,16 +367,21 @@ def VQE_show_annni(vqeclass, log_heatmap = False, plot3d=True, phase_lines = Fal
         colors = np.vstack((colors_good, colors_bad))
         cmap_acc = LinearSegmentedColormap.from_list("accuracies", colors)
 
-        plt.imshow(accuracy, cmap=cmap_acc, aspect = vqeclass.Hs.n_kappas / vqeclass.Hs.n_hs)
+        plt.imshow(
+            accuracy, cmap=cmap_acc, aspect=vqeclass.Hs.n_kappas / vqeclass.Hs.n_hs
+        )
         plt.clim(0, 0.05)
         cbar = plt.colorbar(fraction=0.04)
-        cbar.ax.tick_params(labelsize=16) 
+        cbar.ax.tick_params(labelsize=16)
     else:
-        plt.imshow(accuracy, norm=LogNorm(), aspect = vqeclass.Hs.n_kappas / vqeclass.Hs.n_hs)
+        plt.imshow(
+            accuracy, norm=LogNorm(), aspect=vqeclass.Hs.n_kappas / vqeclass.Hs.n_hs
+        )
         cbar = plt.colorbar(fraction=0.04)
         cbar.ax.tick_params(labelsize=16)
 
-def VQE_psi_truepsi_fidelity(vqeclass, phase_lines = False, pe_line = False):
+
+def VQE_psi_truepsi_fidelity(vqeclass, phase_lines=False, pe_line=False):
     """
     For each VQE resulting state, show its fidelity compared to its true state obtained through diagonalization of the Hamiltonian:
 
@@ -350,17 +406,25 @@ def VQE_psi_truepsi_fidelity(vqeclass, phase_lines = False, pe_line = False):
         return qml.state()
 
     # Jit and vmapped function to compute the fidelity
-    jv_fidelity = jax.jit(lambda true, pars: losses.vqe_fidelities(true, pars, q_vqe_state))
-    
-    fidelity_map = jv_fidelity(vqeclass.Hs.true_psi0, vqeclass.vqe_params0) 
+    jv_fidelity = jax.jit(
+        lambda true, pars: losses.vqe_fidelities(true, pars, q_vqe_state)
+    )
+
+    fidelity_map = jv_fidelity(vqeclass.Hs.true_psi0, vqeclass.vqe_params0)
     fidelity_map = np.reshape(fidelity_map, (sidex, sidey))
 
-    plot_layout(vqeclass.Hs, phase_lines=phase_lines, pe_line=pe_line, title=r"Fidelities,     $N = {0}$".format(str(vqeclass.Hs.N)))
-    plt.imshow(np.rot90(fidelity_map), aspect = vqeclass.Hs.n_kappas / vqeclass.Hs.n_hs)
+    plot_layout(
+        vqeclass.Hs,
+        phase_lines=phase_lines,
+        pe_line=pe_line,
+        title=r"Fidelities,     $N = {0}$".format(str(vqeclass.Hs.N)),
+    )
+    plt.imshow(np.rot90(fidelity_map), aspect=vqeclass.Hs.n_kappas / vqeclass.Hs.n_hs)
     cbar = plt.colorbar(fraction=0.04)
-    cbar.ax.tick_params(labelsize=16) 
+    cbar.ax.tick_params(labelsize=16)
 
-def VQE_fidelity_slice(vqeclass, slice_value, axis = 0, truestates = False):
+
+def VQE_fidelity_slice(vqeclass, slice_value, axis=0, truestates=False):
     """
     Shows confusion matrix of fidelities of only a 'slice' of states in the parameter space.
     In other words, it will be computed the fidelity of each state among every other that share
@@ -383,19 +447,31 @@ def VQE_fidelity_slice(vqeclass, slice_value, axis = 0, truestates = False):
     # 1. Show the parameter space and the line of the slice #
     #########################################################
     if axis == 0:
-        plt.axhline(y = sidey - slice_value*sidey/ymax - .5, color='blue', lw=2)
+        plt.axhline(y=sidey - slice_value * sidey / ymax - 0.5, color="blue", lw=2)
     elif axis == 1:
-        plt.axvline(x = slice_value*sidex/xmax - .5, color='blue', lw=2)
+        plt.axvline(x=slice_value * sidex / xmax - 0.5, color="blue", lw=2)
     else:
-        raise ValueError('Invalid axis, it can only be either 0 or 1')
+        raise ValueError("Invalid axis, it can only be either 0 or 1")
 
     vqeclass.Hs.show_phasesplot()
-    
+
     sidey, ymax = vqeclass.Hs.n_hs, vqeclass.Hs.h_max
     sidex, xmax = vqeclass.Hs.n_kappas, vqeclass.Hs.kappa_max
 
-    ticks_x = [-.5 , vqeclass.Hs.n_kappas/4 - .5, vqeclass.Hs.n_kappas/2 - .5 , 3*vqeclass.Hs.n_kappas/4 - .5, vqeclass.Hs.n_kappas - .5]
-    ticks_y = [-.5 , vqeclass.Hs.n_hs/4 - .5, vqeclass.Hs.n_hs/2 - .5 , 3*vqeclass.Hs.n_hs/4 - .5, vqeclass.Hs.n_hs - .5]
+    ticks_x = [
+        -0.5,
+        vqeclass.Hs.n_kappas / 4 - 0.5,
+        vqeclass.Hs.n_kappas / 2 - 0.5,
+        3 * vqeclass.Hs.n_kappas / 4 - 0.5,
+        vqeclass.Hs.n_kappas - 0.5,
+    ]
+    ticks_y = [
+        -0.5,
+        vqeclass.Hs.n_hs / 4 - 0.5,
+        vqeclass.Hs.n_hs / 2 - 0.5,
+        3 * vqeclass.Hs.n_hs / 4 - 0.5,
+        vqeclass.Hs.n_hs - 0.5,
+    ]
 
     plt.show()
 
@@ -408,39 +484,43 @@ def VQE_fidelity_slice(vqeclass, slice_value, axis = 0, truestates = False):
 
         for i in range(dimvec):
             for j in range(dimvec):
-                c_matrix[i,j] = np.square( np.real(vectors[i] @ np.conj(vectors[j]) ) )
+                c_matrix[i, j] = np.square(np.real(vectors[i] @ np.conj(vectors[j])))
 
-        plt.imshow(c_matrix, origin = 'lower')
-        
+        plt.imshow(c_matrix, origin="lower")
+
         return c_matrix
 
     plt.figure(figsize=(8, 6), dpi=80)
-    
+
     # H : 2 = index : side -> index = H * side / 2
     starting_index = slice_value * vqeclass.Hs.n_hs / vqeclass.Hs.h_max
-    
+
     if axis == 0:
-        indexes = np.arange(starting_index,sidex*sidey,sidey).astype(int)
+        indexes = np.arange(starting_index, sidex * sidey, sidey).astype(int)
         print(indexes)
         print(len(indexes))
         plt.xticks(
-        ticks= ticks_x,
-        labels=[np.round(k * vqeclass.Hs.kappa_max  / 4, 2) for k in range(0, 5)],
+            ticks=ticks_x,
+            labels=[np.round(k * vqeclass.Hs.kappa_max / 4, 2) for k in range(0, 5)],
         )
         plt.yticks(
             ticks=ticks_x,
-            labels=[np.round(k * vqeclass.Hs.kappa_max  / 4, 2) for k in range(0, 5)],
+            labels=[np.round(k * vqeclass.Hs.kappa_max / 4, 2) for k in range(0, 5)],
         )
         plt.ylabel(r"$\kappa$", fontsize=24)
         plt.xlabel(r"$\kappa$", fontsize=24)
-        title = f'h = {slice_value}'
+        title = f"h = {slice_value}"
     else:
-        indexes = np.arange(int(sidex*slice_value)*sidey,sidex*(int(sidey*slice_value))+sidex,1).astype(int)
+        indexes = np.arange(
+            int(sidex * slice_value) * sidey,
+            sidex * (int(sidey * slice_value)) + sidex,
+            1,
+        ).astype(int)
         print(indexes)
         print(len(indexes))
         plt.xticks(
-        ticks= ticks_y,
-        labels=[np.round(k * vqeclass.Hs.h_max / 4, 2) for k in range(4, -1, -1)],
+            ticks=ticks_y,
+            labels=[np.round(k * vqeclass.Hs.h_max / 4, 2) for k in range(4, -1, -1)],
         )
         plt.yticks(
             ticks=ticks_y,
@@ -448,8 +528,8 @@ def VQE_fidelity_slice(vqeclass, slice_value, axis = 0, truestates = False):
         )
         plt.ylabel(r"$h$", fontsize=24)
         plt.xlabel(r"$h$", fontsize=24)
-        title = f'k = {slice_value}'
-    
+        title = f"k = {slice_value}"
+
     if truestates:
         # Check if we computed the true states, if not compute them
         try:
@@ -466,32 +546,36 @@ def VQE_fidelity_slice(vqeclass, slice_value, axis = 0, truestates = False):
 
             return qml.state()
 
-        vqe_psi0 = jax.jit(jax.vmap(q_vqe_state, in_axes=(0)))(vqeclass.vqe_params0[indexes])
+        vqe_psi0 = jax.jit(jax.vmap(q_vqe_state, in_axes=(0)))(
+            vqeclass.vqe_params0[indexes]
+        )
         confusion = create_confusion_matrix(vqe_psi0)
 
     leg = plt.legend(
-            bbox_to_anchor=(1, 1),
-            loc="upper right",
-            fontsize=16,
-            facecolor="white",
-            markerscale=1,
-            framealpha=0.9,
-            title=title,
-            title_fontsize=16,
-        )
+        bbox_to_anchor=(1, 1),
+        loc="upper right",
+        fontsize=16,
+        facecolor="white",
+        markerscale=1,
+        framealpha=0.9,
+        title=title,
+        title_fontsize=16,
+    )
 
     cbar = plt.colorbar(fraction=0.04)
     cbar.ax.tick_params(labelsize=16)
     plt.tight_layout()
     plt.show()
 
-#   _  _      ____   _____ _   _ _   _ 
+
+#   _  _      ____   _____ _   _ _   _
 #  | || |    / __ \ / ____| \ | | \ | |
 #  | || |_  | |  | | |    |  \| |  \| |
 #  |__   _| | |  | | |    | . ` | . ` |
 #     | |_  | |__| | |____| |\  | |\  |
 #     |_(_)  \___\_\\_____|_| \_|_| \_|
-                                                   
+
+
 def QCNN_classification_ising(qcnnclass, train_index):
     """
     Plots performance of the classifier on the whole data for a QCNN of a Nearest Neighbour Interaction Hamiltonian
@@ -513,12 +597,12 @@ def QCNN_classification_ising(qcnnclass, train_index):
 
     vcircuit = jax.vmap(lambda v: qcnn_circuit_prob(v, qcnnclass.params), in_axes=(0))
     predictions = vcircuit(qcnnclass.vqe_params)[:, 1]
-    
+
     # The test index is the set difference of the whole dataset and the training set
     test_index = np.setdiff1d(np.arange(len(qcnnclass.vqe_params)), train_index)
 
     predictions_train, colors_train = [], []
-    predictions_test,  colors_test  = [], []
+    predictions_test, colors_test = [], []
 
     for i, prediction in enumerate(predictions):
         # if data in training set
@@ -588,6 +672,7 @@ def QCNN_classification_ising(qcnnclass, train_index):
         c=colors_test,
     )
 
+
 def QCNN_classification_ANNNI_marginal(qcnnclass):
     """
     Displays the probabilities of the states on the two axes. 
@@ -609,16 +694,16 @@ def QCNN_classification_ANNNI_marginal(qcnnclass):
     # Subset of the states on the two axes
     mask1 = jnp.array(qcnnclass.vqe.Hs.model_params)[:, 1] == 0
     mask2 = jnp.array(qcnnclass.vqe.Hs.model_params)[:, 2] == 0
-    
+
     ising_1, label_1, x1 = (
         qcnnclass.vqe_params[mask1],
         qcnnclass.labels[mask1, :].astype(int),
-        np.arange( len(mask1[mask1 == True]) )
+        np.arange(len(mask1[mask1 == True])),
     )
     ising_2, label_2, x2 = (
         qcnnclass.vqe_params[mask2],
         qcnnclass.labels[mask2, :].astype(int),
-        np.arange( len(mask2[mask2 == True]) )
+        np.arange(len(mask2[mask2 == True])),
     )
 
     vcircuit = jax.vmap(lambda v: qcnn_circuit_prob(v, qcnnclass.params), in_axes=(0))
@@ -671,12 +756,9 @@ def QCNN_classification_ANNNI_marginal(qcnnclass):
 
     plt.show()
 
+
 def QCNN_classification_ANNNI(
-    qcnnclass,
-    hard_thr=True,
-    predicted_line = False,
-    label=False,
-    info=False,
+    qcnnclass, hard_thr=True, predicted_line=False, label=False, info=False,
 ):
     """
     Plots performance of the classifier on the whole data for a QCNN of a ANNI model
@@ -696,7 +778,7 @@ def QCNN_classification_ANNNI(
     """
 
     plt.figure(figsize=(8, 6), dpi=80)
-    
+
     sidex = qcnnclass.vqe.Hs.n_kappas
     sidey = qcnnclass.vqe.Hs.n_hs
 
@@ -705,12 +787,15 @@ def QCNN_classification_ANNNI(
     if hard_thr:
         predictions = np.argmax(predictions, axis=1)
 
-        phases = mpl.colors.ListedColormap(
-            ["black", "skyblue", "yellow", "palegreen"]
-        )
+        phases = mpl.colors.ListedColormap(["black", "skyblue", "yellow", "palegreen"])
         norm = mpl.colors.BoundaryNorm(np.arange(0, 5), phases.N)
 
-        plt.imshow(np.rot90(np.reshape(predictions, (sidex, sidey))), cmap=phases, norm=norm, aspect = qcnnclass.vqe.Hs.n_kappas / qcnnclass.vqe.Hs.n_hs)
+        plt.imshow(
+            np.rot90(np.reshape(predictions, (sidex, sidey))),
+            cmap=phases,
+            norm=norm,
+            aspect=qcnnclass.vqe.Hs.n_kappas / qcnnclass.vqe.Hs.n_hs,
+        )
 
     else:
         mygreen = np.array([90, 255, 100]) / 255
@@ -724,12 +809,24 @@ def QCNN_classification_ANNNI(
 
         rgb_probs = np.rot90(np.reshape(rgb_probs, (sidex, sidey, 3)))
 
-        plt.imshow(rgb_probs, alpha=1, aspect = qcnnclass.vqe.Hs.n_kappas / qcnnclass.vqe.Hs.n_hs)
+        plt.imshow(
+            rgb_probs, alpha=1, aspect=qcnnclass.vqe.Hs.n_kappas / qcnnclass.vqe.Hs.n_hs
+        )
 
         if predicted_line:
-            plt.plot(qcnnclass.predict_lines(predictions=predictions), color='magenta', label='Predicted Transition Lines')
+            plt.plot(
+                qcnnclass.predict_lines(predictions=predictions),
+                color="magenta",
+                label="Predicted Transition Lines",
+            )
 
-    plot_layout(qcnnclass.vqe.Hs, False, True, r"QCNN,     $N = {0}$".format(str(qcnnclass.N)),figure_already_defined=True)
+    plot_layout(
+        qcnnclass.vqe.Hs,
+        False,
+        True,
+        r"QCNN,     $N = {0}$".format(str(qcnnclass.N)),
+        figure_already_defined=True,
+    )
 
     if label:
         plt.figtext(0.28, 0.79, "(" + label + ")", color="black", fontsize=20)
@@ -765,14 +862,19 @@ def QCNN_classification_ANNNI(
                 ha="center",
                 va="center",
             )
-#  _____    ______                     _           
-# | ____|  |  ____|                   | |          
-# | |__    | |__   _ __   ___ ___   __| | ___ _ __ 
+
+
+#  _____    ______                     _
+# | ____|  |  ____|                   | |
+# | |__    | |__   _ __   ___ ___   __| | ___ _ __
 # |___ \   |  __| | '_ \ / __/ _ \ / _` |/ _ \ '__|
-#  ___) |  | |____| | | | (_| (_) | (_| |  __/ |   
-# |____(_) |______|_| |_|\___\___/ \__,_|\___|_|   
-                               
-def ENC_show_compression_ANNNI(encclass, trainingpoint=False, label=False, plot3d=False):
+#  ___) |  | |____| | | | (_| (_) | (_| |  __/ |
+# |____(_) |______|_| |_|\___\___/ \__,_|\___|_|
+
+
+def ENC_show_compression_ANNNI(
+    encclass, trainingpoint=False, label=False, plot3d=False
+):
     """
     Plots performance of the compression on the whole data for an encoder on the ANNI model
 
@@ -815,8 +917,8 @@ def ENC_show_compression_ANNNI(encclass, trainingpoint=False, label=False, plot3
         fig.show()
 
     plt.figure(figsize=(8, 6), dpi=80)
-    plot_layout(encclass.vqe.Hs, pe_line=True, phase_lines=True, title='')
-    plt.imshow(exps, aspect = encclass.vqe.Hs.n_kappas / encclass.vqe.Hs.n_hs)
+    plot_layout(encclass.vqe.Hs, pe_line=True, phase_lines=True, title="")
+    plt.imshow(exps, aspect=encclass.vqe.Hs.n_kappas / encclass.vqe.Hs.n_hs)
     if type(trainingpoint) == int:
         train_x = trainingpoint // sidey
         train_y = sidey - trainingpoint % sidey
@@ -865,15 +967,15 @@ def ENC_show_compression_ANNNI(encclass, trainingpoint=False, label=False, plot3
         va="center",
     )
     leg = plt.legend(
-            bbox_to_anchor=(1, 1),
-            loc="upper right",
-            fontsize=16,
-            facecolor="white",
-            markerscale=0.8,
-            framealpha=0.9,
-            title=r"AD,     $N = {0}$".format(str(encclass.vqe.Hs.N)),
-            title_fontsize=16,
-        )
+        bbox_to_anchor=(1, 1),
+        loc="upper right",
+        fontsize=16,
+        facecolor="white",
+        markerscale=0.8,
+        framealpha=0.9,
+        title=r"AD,     $N = {0}$".format(str(encclass.vqe.Hs.N)),
+        title_fontsize=16,
+    )
     leg.get_frame().set_boxstyle("Square")
     cbar = plt.colorbar()
     cbar.ax.tick_params(labelsize=18)

@@ -164,7 +164,7 @@ class encoder:
 
         self.params = params
 
-    def show_compression(self, trainingpoint, label = False, plot3d = False):
+    def show_compression(self, trainingpoint, label=False, plot3d=False):
         """
         Plots performance of the compression on the whole data for an encoder on the ANNI model
 
@@ -177,7 +177,10 @@ class encoder:
         plot3d : bool
             If True the 3D plot will be displayed aswell
         """
-        qplt.ENC_show_compression_ANNNI(self, trainingpoint=trainingpoint, label=label, plot3d=plot3d)
+        qplt.ENC_show_compression_ANNNI(
+            self, trainingpoint=trainingpoint, label=label, plot3d=plot3d
+        )
+
 
 def enc_classification_ANNNI(
     vqeclass: vqe.vqe, lr: Number, epochs: int
@@ -205,7 +208,7 @@ def enc_classification_ANNNI(
     """
     # indexes of the 3 corner points
     sidey = vqeclass.Hs.n_hs
-    sidex = vqeclass.Hs.n_kappas  
+    sidex = vqeclass.Hs.n_kappas
 
     phase1 = 0
     phase2 = sidey - 1
@@ -235,14 +238,15 @@ def enc_classification_ANNNI(
 
         encoding_scores.append(exps)
 
-    qplt.plot_layout(vqeclass.Hs, pe_line=False, phase_lines=True, title='Classification of the encoder')
+    qplt.plot_layout(
+        vqeclass.Hs,
+        pe_line=False,
+        phase_lines=True,
+        title="Classification of the encoder",
+    )
 
-    phases = mpl.colors.ListedColormap(
-            ["palegreen", "skyblue", "yellow", "black"]
-        )
+    phases = mpl.colors.ListedColormap(["palegreen", "skyblue", "yellow", "black"])
     norm = mpl.colors.BoundaryNorm(np.arange(0, 5), phases.N)
     plt.imshow(np.argmin(np.array(encoding_scores), axis=(0)), cmap=phases, norm=norm)
-
-    
 
     return np.argmin(np.array(encoding_scores), axis=(0))

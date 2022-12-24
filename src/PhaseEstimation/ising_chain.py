@@ -108,8 +108,8 @@ def build_Hs(
         n_states,
         # The output of this class must match with the one of the annni_model class
         # so we must return these values as well for the sake of generality
-        n_states, 
-        1, 
-        2, 
-        0
+        n_states,
+        1,
+        2,
+        0,
     )

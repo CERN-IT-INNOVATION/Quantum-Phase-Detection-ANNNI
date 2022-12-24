@@ -90,6 +90,7 @@ def circuit_ising2(N: int, params: List[Number]) -> int:
 
     return index
 
+
 def circuit_ising3(N: int, params: List[Number]) -> int:
     """
     Shorter and more real circuit
@@ -311,7 +312,7 @@ class vqe:
         try:
             self.Hs.true_e0
         except:
-            self.Hs.true_e0 = np.array([0.]*len(self.Hs.recycle_rule))
+            self.Hs.true_e0 = np.array([0.0] * len(self.Hs.recycle_rule))
 
         progress = tqdm(self.Hs.recycle_rule, position=0, leave=True)
         # Site will follow the order of Hs.recycle rule:
@@ -434,7 +435,7 @@ class vqe:
         elif self.Hs.func == annni.build_Hs:
             qplt.VQE_psi_truepsi_fidelity(self, **kwargs)
 
-    def show_fidelity_slice(self, slice_value, axis = 0, truestates = False):
+    def show_fidelity_slice(self, slice_value, axis=0, truestates=False):
         """
         Shows confusion matrix of fidelities of only a 'slice' of states in the parameter space.
         In other words, it will be computed the fidelity of each state among every other that share
@@ -457,7 +458,7 @@ class vqe:
         if self.Hs.func == ising.build_Hs:
             raise Exception("Function not implemented for this type of VQE")
         elif self.Hs.func == annni.build_Hs:
-            qplt.VQE_fidelity_slice(self, slice_value, axis = axis, truestates = truestates)
+            qplt.VQE_fidelity_slice(self, slice_value, axis=axis, truestates=truestates)
 
     def save(self, filename: str):
         """
@@ -473,14 +474,14 @@ class vqe:
 
         if not isinstance(filename, str):
             raise TypeError("Invalid name for file")
-            
+
         things_to_save = [
-                self.Hs,
-                self.vqe_params0,
-                self.vqe_e0,
-                self.true_e0,
-                self.circuit_fun,
-            ]
+            self.Hs,
+            self.vqe_params0,
+            self.vqe_e0,
+            self.true_e0,
+            self.circuit_fun,
+        ]
 
         with open(filename, "wb") as f:
             pickle.dump(things_to_save, f)
