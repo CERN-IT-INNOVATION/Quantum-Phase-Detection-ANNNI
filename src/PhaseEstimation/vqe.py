@@ -31,6 +31,7 @@ def circuit_ising(N: int, params: List[Number]) -> int:
     """
     Full VQE circuit
     Number of parameters (gates): 7*N
+    
     Parameters
     ----------
     N : int
