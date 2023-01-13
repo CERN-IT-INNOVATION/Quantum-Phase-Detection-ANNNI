@@ -15,7 +15,7 @@ Package build on Pennylane for the Quantum Phase Detection of the ANNNI Model th
 
 ### Clone and move to Project folder
 
-3. ```git clone https://github.com/SaverioMonaco/Quantum-Phase-Detection-ANNNI.git```
+3. ```https://github.com/CERN-IT-INNOVATION/Quantum-Phase-Detection-ANNNI.git```
 4. ```cd Quantum-Phase-Detection-ANNNI```
 
 ### Install required packages
