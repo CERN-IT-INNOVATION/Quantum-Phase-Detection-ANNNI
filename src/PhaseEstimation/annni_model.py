@@ -68,7 +68,7 @@ def build_Hs(
     """
     Sets up np.ndarray of pennylane Hamiltonians with different parameters
     total_states = n_kappas * n_hs
-    kappa can have n_kappas values from 0 to - |kappa_max| (NB the sign)
+    kappa can have n_kappas values from 0 to - abs(kappa_max) (NB the sign)
     h     can have n_hs values from 0 to h_max
     
     Parameters
@@ -82,7 +82,7 @@ def build_Hs(
     n_kappas : int
         Number of different values of kappa the hamiltonian can have
     kappa_max : float
-        Maximum value of kappa, the values will range from 0 to - |kappa_max|
+        Maximum value of kappa
     ring : bool
         If False, system has open-boundaries condition
         
@@ -92,7 +92,7 @@ def build_Hs(
     np.array
         Array of pennylane Hamiltonians
     np.array
-        Array of labels for analytical solutionss
+        Array of labels for analytical solutions
     np.array
         Array for the recycle rule
     np.array
