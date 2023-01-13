@@ -1,14 +1,6 @@
 PhaseEstimation package
 =======================
 
-Subpackages
------------
-
-.. toctree::
-   :maxdepth: 4
-
-   PhaseEstimation.tests
-
 Submodules
 ----------
 
