@@ -16,7 +16,7 @@ Clone and move to Project folder
 
 .. code-block:: bash
 
-   git clone https://github.com/SaverioMonaco/Quantum-Phase-Detection-ANNNI.git
+   git clone https://github.com/CERN-IT-INNOVATION/Quantum-Phase-Detection-ANNNI.git
    cd Quantum-Phase-Detection-ANNNI
 
 Install required packages
