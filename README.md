@@ -2,6 +2,9 @@
 [![DOI](https://zenodo.org/badge/478113360.svg)](https://zenodo.org/badge/latestdoi/478113360)
 [![DOI:10.48550/arXiv.2208.08748](http://img.shields.io/badge/DOI-10.48550/arXiv.2208.08748-B31B1B.svg)](https://doi.org/10.48550/arXiv.2208.08748)
 
+Read the Docs Documentation: https://cern-qpd-annni.readthedocs.io/en/latest/
+---
+
 # Quantum phase detection generalisation from marginal quantum neural network models
 
 Package build on Pennylane for the Quantum Phase Detection of the ANNNI Model through Quantum Convolutional Neural Networks and Quantum Autoencoder
@@ -15,7 +18,7 @@ Package build on Pennylane for the Quantum Phase Detection of the ANNNI Model th
 
 ### Clone and move to Project folder
 
-3. ```https://github.com/CERN-IT-INNOVATION/Quantum-Phase-Detection-ANNNI.git```
+3. ```git clone https://github.com/CERN-IT-INNOVATION/Quantum-Phase-Detection-ANNNI.git```
 4. ```cd Quantum-Phase-Detection-ANNNI```
 
 ### Install required packages
