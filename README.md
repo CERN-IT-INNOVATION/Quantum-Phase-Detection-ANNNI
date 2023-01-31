@@ -3,6 +3,7 @@
 [![DOI:10.48550/arXiv.2208.08748](http://img.shields.io/badge/DOI-10.48550/arXiv.2208.08748-B31B1B.svg)](https://doi.org/10.48550/arXiv.2208.08748)
 
 Read the Docs Documentation: https://cern-qpd-annni.readthedocs.io/en/latest/
+
 ---
 
 # Quantum phase detection generalisation from marginal quantum neural network models
