@@ -42,10 +42,18 @@ The [/notebooks](notebooks) folder contains many examples for all the use-cases 
 If you used this package for your research, please cite:
 
 ```text
-@article{monaco2022quantum,
-  title={Quantum phase detection generalisation from marginal quantum neural network models},
-  author={Monaco, Saverio and Kiss, Oriel and Mandarino, Antonio and Vallecorsa, Sofia and Grossi, Michele},
-  journal={arXiv preprint arXiv:2208.08748},
-  year={2022}
+@article{PhysRevB.107.L081105,
+  title = {Quantum phase detection generalization from marginal quantum neural network models},
+  author = {Monaco, Saverio and Kiss, Oriel and Mandarino, Antonio and Vallecorsa, Sofia and Grossi, Michele},
+  journal = {Phys. Rev. B},
+  volume = {107},
+  issue = {8},
+  pages = {L081105},
+  numpages = {6},
+  year = {2023},
+  month = {Feb},
+  publisher = {American Physical Society},
+  doi = {10.1103/PhysRevB.107.L081105},
+  url = {https://link.aps.org/doi/10.1103/PhysRevB.107.L081105}
 }
 ```
