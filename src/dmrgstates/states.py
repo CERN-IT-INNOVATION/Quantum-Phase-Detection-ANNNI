@@ -58,4 +58,21 @@ class exact_states:
     def __repr__(self):
         self.Hs.show_phasesplot()
         return ''
+
+def get_fake_states(N : int = 6, n_hs : int = 10, n_kappas : int = 10):
+    PARAMS = []
+
+    hs     = np.linspace(0, +2, n_hs)
+    kappas = np.linspace(0, -1, n_kappas)
+    
+    for k in kappas:
+        for h in hs:
+            PARAMS.append([h,k])
+    PARAMS = np.array(PARAMS)
+
+    STATES = np.random.rand(n_hs*n_kappas, 2**N)
+    STATES  = STATES / np.linalg.norm(STATES, axis=1)[:, None]
+
+
+    return STATES, PARAMS
     
