@@ -133,14 +133,13 @@ dmypy.json
 
 # My
 other/
+demo.ipynb
+dummy.ipynb
 # environment folder
 qua/ 
 # Documentation
 
 # Large files
 *.pkl
-./src/PhaseEstimation/data/vqes/ANNNI/N10n100
-./src/PhaseEstimation/data/vqes/ANNNI/N12n100
-/N12n100
-./src/PhaseEstimation/data/vqes/ANNNI/ring/N10n100
 *.egg.info
+

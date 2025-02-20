@@ -1,515 +1,234 @@
-""" This module implements the base functions to implement a Quantum Convolutional Neural Network (QCNN) for the (ANNNI) Ising Model. """
+"""This module implements the base functions to implement a Quantum Convolutional Neural Network (QCNN) for the (ANNNI) Ising Model. """
 import pennylane as qml
 from pennylane import numpy as np
-import jax
-import jax.numpy as jnp
-from jax.example_libraries import optimizers
+from jax import jit, vmap, value_and_grad
+from jax import numpy as jnp
+from jax import config
+import optax
 
-from matplotlib import pyplot as plt
+from PhaseEstimation import annni, circuits
 
-import copy, tqdm, pickle
+from typing import Callable
+import tqdm
+import time
 
-from PhaseEstimation import circuits, vqe, general as qmlgen, ising_chain as ising, annni_model as annni, visualization as qplt
+import matplotlib.pyplot as plt
+from matplotlib.colors import ListedColormap
 
-from typing import Tuple, List, Callable
-from numbers import Number
+# Training raises UserWarning: 
+# Explicitly requested dtype <class 'jax.numpy.complex128'> 
+# requested in astype is not available, and will be truncated 
+# to dtype complex64.
+# TODO: Is complex64 sufficient? Does it bring more speed?
+config.update("jax_enable_x64", True)
 
-##############
-
-
-def qcnn_circuit(params: List[Number], N: int, n_outputs: int) -> Tuple[int, List[int]]:
+def cross_entropy(pred : np.ndarray, Y : np.ndarray, T : float = 0.5):
     """
-    Building function for the QCNN circuit:
-    
-    Parameters
-    ----------
-    params : np.ndarray
-        Array of QCNN parameters
-    N : int
-        Number of qubits
-    n_outputs : int
-        Output vector dimension
-
-    Returns
-    -------
-    int
-        Total number of parameters needed to build this circuit
-    np.ndarray
-        Array of indexes of not-measured wires (due to pooling)
-    """
-
-    # Wires that are not measured (through pooling)
-    active_wires = np.arange(N)
-
-    # Visual Separation VQE||QCNN
-    qml.Barrier()
-    qml.Barrier()
-
-    # Index of the parameter vector
-    index = 0
-
-    # Iterate Convolution+Pooling until we only have a single wires
-    index = circuits.wall_gate(active_wires, qml.RY, params, index)
-    circuits.wall_cgate_serial(active_wires, qml.CNOT)
-    while len(active_wires) > n_outputs:  # Repeat until the number of active wires
-        # (non measured) is equal to n_outputs
-        # Convolute
-        index = circuits.convolution(active_wires, params, index)
-        # Measure wires and apply rotations based on the measurement
-        index, active_wires = circuits.pooling(active_wires, qml.RX, params, index)
-
-        qml.Barrier()
-
-    circuits.wall_cgate_serial(active_wires, qml.CNOT)
-    index = circuits.wall_gate(active_wires, qml.RY, params, index)
-
-    # Return the number of parameters
-    return index + 1, active_wires
-
-
-class qcnn:
-    def __init__(self, vqe: vqe.vqe, qcnn_circuit: Callable, n_outputs: int = 1):
-        """
-        Class for the QCNN algorithm
-
-        Parameters
-        ----------
-        vqe : class
-            VQE class
-        qcnn_circuit :
-            Function of the QCNN circuit
-        n_outputs : int
-            Output vector dimension
-        """
-        self.vqe = vqe
-        self.N = vqe.Hs.N
-        self.n_states = vqe.Hs.n_states
-        self.n_outputs = n_outputs
-        self.qcnn_circuit_fun = lambda p: qcnn_circuit(p, self.N, n_outputs)
-        self.n_params, self.final_active_wires = self.qcnn_circuit_fun([0] * 10000)
-        self.params = np.array(np.random.rand(self.n_params))
-        self.device = vqe.device
-
-        self.vqe_params = np.array(vqe.vqe_params0)
-
-        self.labels = np.array(vqe.Hs.labels)
-        self.loss_train: List[float] = []
-        self.loss_test: List[float] = []
-
-    def __repr__(self):
-        @qml.qnode(self.device, interface="jax")
-        def circuit_drawer(self):
-            _ = self.qcnn_circuit_fun(np.arange(self.n_params))
-            if self.n_outputs == 1:
-                return qml.probs(wires=self.N - 1)
-            else:
-                return qml.probs([int(k) for k in self.final_active_wires])
-
-        return qml.draw(circuit_drawer)(self)
-
-    def _vqe_qcnn_circuit(self, vqe_p, qcnn_p):
-        """
-        Circuit:
-        VQE + QCNN
-        """
-        self.vqe.circuit(vqe_p)
-        self.qcnn_circuit_fun(qcnn_p)
-
-    # Training function
-    def train(
-        self,
-        lr: float,
-        n_epochs: int,
-        train_index: List[Number],
-        loss_fn: Callable,
-        circuit: bool = False,
-        plot: bool = False,
-    ):
-        """
-        Training function for the QCNN.
-
-        Parameters
-        ----------
-        lr : float
-            Learning rate for the ADAM optimizer
-        n_epochs : int
-            Total number of epochs for each learning
-        train_index : np.ndarray
-            Index of training points
-        loss_fn : function
-            Loss function
-        circuit : bool
-            if True -> Prints the circuit
-        plot : bool
-            if True -> It displays loss curve
-        """
-
-        # -1 could be in the labels as [-1, -1] when training
-        # ANNNI model which non-trivial cases have no solution
-        if (-1 not in self.labels) and (None not in self.labels):
-            X_train, Y_train = (
-                jnp.array(self.vqe_params[train_index]),
-                jnp.array(self.labels[train_index]),
-            )
-            test_index = np.setdiff1d(np.arange(len(self.vqe_params)), train_index)
-            X_test, Y_test = (
-                jnp.array(self.vqe_params[test_index]),
-                jnp.array(self.labels[test_index]),
-            )
-        else:
-            # If we are traing an ANNNI model, we have to first restrict on the trivial cases:
-            # L = 0, K = whatever
-            # K = 0, L = whatever
-            mask = jnp.array(
-                jnp.logical_or(
-                    jnp.array(self.vqe.Hs.model_params)[:, 1] == 0,
-                    jnp.array(self.vqe.Hs.model_params)[:, 2] == 0,
-                )
-            )
-
-            self.vqe_params = jnp.array(self.vqe_params)
-
-            X, Y = self.vqe_params[mask], self.labels[mask, :].astype(int)
-            # The labels stored in the Hamiltonian class are:
-            #   > [ 1, 1] for paramagnetic states
-            #   > [ 0, 1] for ferromagnetic states
-            #   > [ 1, 0] for antiphase states
-            #   > [ 0, 0] not used
-            #   > [-1,-1] for states with no analytical solutions
-            # qml.probs(wires = active_wires) will output the following probabilities:
-            # (example for a two qbits output)
-            # p(00), p(01), p(10), p(11)
-            # The labels need to be transformed accordingly
-            #     [0,0] -> [1,0,0,0] trash case
-            #     [0,1] -> [0,1,0,0] for ferromagnetic
-            #     [1,0] -> [0,0,1,0] for antiphase
-            #     [1,1] -> [0,0,0,1] for paramagnetic
-            Ymix = []
-            for label in Y:
-                if (label == [0, 0]).all():
-                    Ymix.append([1, 0, 0, 0])  # Trash
-                elif (label == [0, 1]).all():
-                    Ymix.append([0, 1, 0, 0])  # Ferromagnetic
-                elif (label == [1, 0]).all():
-                    Ymix.append([0, 0, 1, 0])  # Antiphase
-                elif (label == [1, 1]).all():
-                    Ymix.append([0, 0, 0, 1])  # Paramagnetic
-            Y = jnp.array(Ymix)
-
-            # The indexes of test are
-            # All indexes (only analitical) \ train_index
-            test_index = np.setdiff1d(np.arange(len(Y)), train_index)
-
-            X_train, Y_train = X[train_index], Y[train_index]
-            X_test, Y_test = X[test_index], Y[test_index]
-
-        if circuit:
-            # Display the circuit
-            print("+--- CIRCUIT ---+")
-            print(self)
-
-        # QCircuit: Circuit(VQE, QCNNparams) -> probs
-        @qml.qnode(self.device, interface="jax")
-        def qcnn_circuit_prob(vqe_p, qcnn_p):
-            self._vqe_qcnn_circuit(vqe_p, qcnn_p)
-
-            return qml.probs([int(k) for k in self.final_active_wires])
-
-        params = copy.copy(self.params)
-
-        # Gradient of the Loss function
-        jd_loss_fn = jax.jit(
-            jax.grad(lambda p: loss_fn(X_train, Y_train, p, qcnn_circuit_prob))
-        )
-
-        # Update function
-        # Returns updated parameters, updated state of the optimizer
-        def update(params, opt_state):
-            grads = jd_loss_fn(params)
-            opt_state = opt_update(0, grads, opt_state)
-
-            return get_params(opt_state), opt_state
-
-        # Definying following function:
-        # jitted loss function for training set loss(params)
-        train_loss_fn = jax.jit(
-            lambda p: loss_fn(X_train, Y_train, p, qcnn_circuit_prob)
-        )
-        # jitted loss function for test set loss(params)
-        test_loss_fn = jax.jit(lambda p: loss_fn(X_test, Y_test, p, qcnn_circuit_prob))
-
-        # Initialize tqdm progress bar
-        progress = tqdm.tqdm(range(n_epochs), position=0, leave=True)
-
-        # Defining an optimizer in Jax
-        opt_init, opt_update, get_params = optimizers.adam(lr)
-        opt_state = opt_init(params)
-
-        loss_history, loss_history_test = [], []
-        # Training loop:
-        for epoch in range(n_epochs):
-            params, opt_state = update(params, opt_state)
-
-            # Every 100 iterations append the updated training (and testing) loss
-            if epoch % 100 == 0:
-                loss_history.append(train_loss_fn(params))
-                if len(Y_test) > 0:
-                    loss_history_test.append(test_loss_fn(params))
-
-            # Update progress bar
-            progress.update(1)
-            progress.set_description("Cost: {0}".format(loss_history[-1]))
-
-        # Update qcnn class after training
-        self.loss_train = loss_history
-        self.loss_test = loss_history_test
-        self.params = params
-
-        if plot:
-            plt.figure(figsize=(15, 5))
-            plt.plot(
-                np.arange(len(loss_history)) * 100,
-                np.asarray(loss_history),
-                label="Training Loss",
-            )
-            if len(X_test) > 0:
-                plt.plot(
-                    np.arange(len(loss_history_test)) * 100,
-                    np.asarray(loss_history_test),
-                    label="Test Loss",
-                )
-            plt.axhline(y=0, color="r", linestyle="--")
-            plt.title("Loss history")
-            plt.ylabel("Average Cross entropy")
-            plt.xlabel("Epoch")
-            plt.grid(True)
-            plt.legend()
-
-    def predict(self):
-        """
-        Get the phases probabilities for each VQE state
-
-        Returns
-        -------
-        List[List[Number]]
-            List of probabilities
-        """
-        @qml.qnode(self.device, interface="jax")
-        def qcnn_circuit_prob(params_vqe, params):
-            self._vqe_qcnn_circuit(params_vqe, params)
-
-            return qml.probs([int(k) for k in self.final_active_wires])
-
-        vcircuit = jax.vmap(
-            lambda v: qcnn_circuit_prob(v, self.params), in_axes=(0)
-        )
-
-        predictions = np.array(vcircuit(self.vqe_params))
-
-        return predictions
-
-    def predict_lines(self, predictions = []):
-        """
-        Get the prdicted phase-transition line
-
-        Parameters
-        ----------
-        predictions : List[List[Number]]
-            This is the output of self.predict(), if it is not passed, the predictions will be computed asnew
-
-        Returns
-        -------
-        List[Number]
-            y-coordinate of the transition point for each kappa value
-        """
-        sidex, sidey = self.vqe.Hs.n_kappas, self.vqe.Hs.n_hs
-        print(sidex,sidey)
-        if len(predictions) == 0:
-            predictions = self.predict()
-
-        predictions = np.reshape(np.argmax(predictions,axis=1), (sidex,sidey))
-        line_trans = []
-
-        for col in range(sidex):
-            y_cord_trans = 0
-            for row in range(sidey-1,-1,-1):
-                prediction = predictions[col,row]
-                if prediction != 3:
-                    break
-                y_cord_trans += 1
-
-            line_trans.append(y_cord_trans)
-
-        return np.array(line_trans)
-
-    def save(self, filename: str):
-        """
-        Saves QCNN parameters to file
-
-        Parameters
-        ----------
-        filename : str
-            File where to save the parameters
-        """
-        if isinstance(filename, str):
-            things_to_save = [self.params, self.qcnn_circuit_fun]
-
-            with open(filename, "wb") as f:
-                pickle.dump(things_to_save, f)
-        else:
-            raise TypeError("Invalid name for file")
-
-
-    def show(self, train_index = [], marginal = False, **kwargs):
-        if self.vqe.Hs.func == ising.build_Hs:
-            qplt.QCNN_classification_ising(self, train_index)
-        elif self.vqe.Hs.func == annni.build_Hs:
-            if marginal:
-                qplt.QCNN_classification_ANNNI_marginal(self)
-            qplt.QCNN_classification_ANNNI(self, **kwargs)
-
-
-def load(filename_vqe: str, filename_qcnn: str) -> qcnn:
-    """
-    Load QCNN from VQE file and QCNN file
-    
-    Parameters
-    ----------
-    filename_vqe : str
-        Name of the file from where to load the VQE class
-    filename_qcnn : str
-        Name of the file from where to load the main parameters of the QCNN class
-        
-    Returns
-    -------
-    class
-        QCNN class
-    """
-    if isinstance(filename_vqe, str) and isinstance(filename_qcnn, str):
-        loaded_vqe = vqe.load_vqe(filename_vqe)
-
-        with open(filename_qcnn, "rb") as f:
-            params, qcnn_circuit_fun = pickle.load(f)
-
-        loaded_qcnn = qcnn(loaded_vqe, qcnn_circuit_fun)
-        loaded_qcnn.params = params
-
-        return loaded_qcnn
-
-    raise TypeError("Invalid name for file")
-
-
-def get_trainset_gaussian(vqeclass: vqe.vqe, nS: int, sigma: float = 1) -> List[int]:
-    """
-    Draw randomly samples from the training for each axis according to the gaussian distribution
-    centered around the phase transition on the axis and std sigma
+    Computes the categorical cross-entropy loss with temperature scaling
+    to encourage more extreme predictions.
 
     Parameters
     ----------
-    vqeclass : vqe.vqe
-        VQE class to get the side size of the system
-    nS : int
-        Number of samples to draw in total
-    sigma : float
-        Standard deviation of the two distributions
+    pred : np.ndarray
+        Array of the predicted probabilities.
+    Y : np.ndarray
+        one-hot encoded true labels.
+    T : float
+        temperature parameter (<1 makes the model more confident).
 
-    Returns
-    -------
-    np.ndarray
-        List of the indexes of the subset of the training set
-    """
-    side = vqeclass.Hs.side
-    if nS > 2 * side - 1:
-        raise ValueError("Subset size too large!")
-    nS = nS // 2  # Size of the subset -> Number of samples to draw among each axis
-    mu = side // 2  # Mean of the distributions
-
-    training_set: List[int] = []
-    # Get Y training set:
-    while len(training_set) < nS:
-        sample = int(
-            np.random.normal(mu, sigma)
-        )  # Draw randomly according to the gaussian distribution
-        if sample not in training_set:  # No duplicates allowed
-            if sample >= 0 and sample < side:  # Check if the drawn sample is in range
-                training_set.append(sample)
-    # Get X training set:
-    while len(training_set) < 2 * nS:
-        sample = (
-            int(np.random.normal(mu, sigma)) + side
-        )  # Draw randomly according to the gaussian distribution (and shift to the X axis)
-        if sample not in training_set:  # No duplicates allowed
-            if (
-                sample >= side and sample < 2 * side
-            ):  # Check if the drawn sample is in range
-                training_set.append(sample)
-
-    return np.array(training_set)
-
-
-def ANNNI_accuracy(qcnnclass: qcnn, plot: bool = False) -> float:
-    """
-    Compute accuracy of the QCNN of the whole ANNNI state space
-
-    Parameters
-    ----------
-    qcnnclass : qcnn
-        QCNN class
-    plot : bool
-        if True -> displays the plot of the accuracy:
-                if green: sample correctly classified
-                if red  : sample wrongly classified
-    
     Returns
     -------
     float
-        Accuracy : (# samples correctly classified)/(# samples) (0,1)
+        Scalar value, the mean categorical cross-entropy loss.
     """
-    circuit = qcnnclass._vqe_qcnn_circuit
-    side = qcnnclass.vqe.Hs.side
+    epsilon = 1e-9  # Small value for numerical stability
+    pred = jnp.clip(pred, epsilon, 1 - epsilon)  # Prevent log(0)
+    
+    # Apply sharpening (raise probabilities to the power of 1/T)
+    pred_sharpened = pred ** (1 / T)
+    pred_sharpened /= jnp.sum(pred_sharpened, axis=1, keepdims=True)  # Re-normalize
+    
+    loss = -jnp.sum(Y * jnp.log(pred_sharpened), axis=1)  # Compute cross-entropy
+    return jnp.mean(loss)  # Return mean loss over batch
 
-    @qml.qnode(qcnnclass.device, interface="jax")
-    def qcnn_circuit_prob(params_vqe, params):
-        circuit(params_vqe, params)
+class Qcnn:
+    def __init__(self, n_qubit: int, side : int, ansatz: Callable = circuits.qcnn, vqeclass = None):
+        """
+        Initialize the Anomaly Detection with given parameters.
 
-        return [qml.probs(wires=int(k)) for k in qcnnclass.final_active_wires]
+        Parameters
+        ----------
+        n_spin : int
+            Number of spins of the system
+        side : int
+            Discretization of the phase space
+        ansatz : Callable
+            Pennylane circuit ansatz
+        vqeclass : PhaseEstimation.vqe.Vqe 
+            Trained VQE model for the inputs. If None, inputs will be obtained by 
+            diagonalizing the corresponding hamiltonian
+        """
+        self.vqeclass = vqeclass
+        self.n_qubit = n_qubit if self.vqeclass is None else self.vqeclass.n_qubit
+        self.side = side if self.vqeclass is None else self.vqeclass.side
+        self.ansatz = ansatz
 
-    vcircuit = jax.vmap(lambda v: qcnn_circuit_prob(v, qcnnclass.params), in_axes=(0))
+        self.device = qml.device("default.qubit", wires=self.n_qubit, shots=None)
 
-    # Get the predictions of the QCNN among all states of the VQE
-    predictions = np.array(np.argmax(vcircuit(qcnnclass.vqe_params), axis=2))
+        self.n_p, self.p_outputwire = self.ansatz(n_qubit, np.arange(10000))
+        self.q_circuit   = qml.QNode(self.circuit, device=self.device) 
+        self.jq_circuit  = jit(self.q_circuit)
+        self.vjq_circuit = vmap(self.jq_circuit, in_axes=(None, 0))
 
-    # Compare predictions to actual states
-    # applying inequalities to theoretical curves
-    labels = []
-    for idx in range(qcnnclass.vqe.Hs.n_states):
-        # compute coordinates and normalize for x in [0,1]
-        # and y in [0,2]
-        x = (idx // side) / side
-        y = 2 * (idx % side) / side
+        self.p_p = np.random.normal(loc=0, scale=1, size=self.n_p)
 
-        # If x==0 we get into 0/0 on the theoretical curve
-        if x == 0:
-            if 1 <= y:
-                labels.append([1, 1])
-            else:
-                labels.append([0, 1])
-        elif x <= 0.5:
-            if qmlgen.paraferro(x) <= y:
-                labels.append([1, 1])
-            else:
-                labels.append([0, 1])
+        self.p_h = np.linspace(0,2,self.side)
+        self.p_k = np.linspace(0,1,self.side)
+        
+        p_state = []
+        p_Y = []
+        analytical_mask = []
+        self.index_map = []
+        
+        progress = tqdm.tqdm(range(self.side*self.side))
+        i = 0
+        for k in self.p_k:
+            for h in self.p_h:
+                self.index_map.append((k, h))
+                if self.vqeclass is None:
+                    H = annni.Annni(self.n_qubit, k, h)
+                    p_state.append(H.psi)
+                    p_Y.append(jnp.eye(4)[H.phase])
+                else:
+                    p_state.append(self.vqeclass.dict_p_p[(float(k), float(h))])
+                    p_Y.append(jnp.eye(4)[self.vqeclass.dict_Y[(float(k), float(h))]])
+                    
+                if k == 0 or h == 0:
+                    analytical_mask.append(i)
+
+                progress.set_description(f"Inizialization: k: {k:.2f} | h: {h:.2f}")
+                progress.update(1)
+                i += 1
+                
+        self.p_state = jnp.array(p_state)
+        self.p_Y = jnp.array(p_Y)
+        self.analytical_mask = jnp.array(analytical_mask).astype(int)
+
+    def ansatz_combined(self, p_p, state):
+        if self.vqeclass is None:
+            qml.StatePrep(state, wires=range(self.n_qubit), normalize = True)
         else:
-            if (qmlgen.paraanti(x)) <= y:
-                labels.append([1, 1])
-            else:
-                labels.append([1, 0])
+            self.vqeclass.ansatz(self.n_qubit, state, **self.vqeclass.kwargs)
 
-    correct = np.sum(np.array(labels) == predictions, axis=1).astype(int) == 2
-    accuracy = np.sum(correct) / (side * side)
+        # Visual Separation VQE||QCNN
+        qml.Barrier()
+        qml.Barrier()
 
-    if plot:
-        plt.imshow(np.rot90(np.reshape(correct, (side, side))), cmap="RdYlGn")
+        self.ansatz(self.n_qubit, p_p)
+
+    def circuit(self, p_p, state):
+        self.ansatz_combined(p_p=p_p, state=state)
+        return qml.probs([int(k) for k in self.p_outputwire])
+
+    def train(self, n_epoch: int, lr: float, reset: bool = False, T : float = .25):
+        p_X = self.p_state[self.analytical_mask]
+        p_Y = self.p_Y[self.analytical_mask]
+
+        def _loss(p_p):
+            # Output expectation values of the qubits
+            p_pred = self.vjq_circuit(p_p, p_X)
+            loss_value = cross_entropy(p_pred, p_Y, T=T)
+
+            return loss_value
+
+        def _update(
+            optimizer,
+            state,
+            p_p,
+        ):
+            ce_loss, grads = value_and_grad(_loss)(p_p)
+            updates, optimizer_state = optimizer.update(grads, state)
+            p_p = optax.apply_updates(p_p, updates)
+
+            return p_p, optimizer_state, ce_loss
+
+        # Redraw random parameters if True
+        if reset:
+            self.p_p = np.random.normal(loc=0, scale=1, size=self.n_p)
+            
+        p_p = self.p_p
+
+        # Set the optimizer
+        optimizer = optax.adam(learning_rate=lr)
+        optimizer_state = optimizer.init(p_p)
+
+        progress = tqdm.tqdm(range(1, n_epoch + 1))
+
+        # Time start training
+        t_train_start = time.time()
+        
+        for epoch in progress:
+            p_p, optimizer_state, loss_value = _update(
+                optimizer,
+                optimizer_state,
+                p_p,
+            )
+
+            progress.set_description(
+                f"LOSS: {loss_value:.4f}"
+            )
+
+        # Time ending training
+        t_train_stop = time.time()
+
+        # At the end of the training, set the attribute params to the
+        # trained parameters
+        self.p_p = p_p
+
+        self.training_time = t_train_stop - t_train_start
+
+    def show(self, mpl=False):
+        if mpl:
+            qml.draw_mpl(self.q_circuit)(np.arange(self.n_p), np.array(self.p_state[0]))
+        else:
+            print(qml.draw(self.q_circuit)(np.arange(self.n_p), np.array(self.p_state[0])))
+            
+    def __repr__(self):
+        repr_str  = "QCNN Class:"
+        repr_str += f"\n  N        : {self.n_qubit}"
+        repr_str += f"\n  side     : {self.side}"
+        repr_str += f"\n  n_params : {self.n_p}"
+        
+        return repr_str
+    
+    def predict(self):
+        """
+        Ouput the predicted phase of every input state in the phase space 
+        """
+        p_pred = self.vjq_circuit(self.p_p, self.p_state)
+        accuracy = jnp.mean(jnp.argmax(p_pred, axis=1) == jnp.argmax(self.p_Y, axis=1))
+        print(f"Accuracy: {float(accuracy) * 100:.2f}%")
+
+        # Ensure reshaping is valid
+        img = np.argmax(p_pred, axis=1).reshape(-1, self.side)
+
+        # Plot the classification results
+        plt.figure(figsize=(4,4))
+
+        colors = ['#4d94d7', '#d74d94', '#68d16c', '#ffd34d']
+
+        # Create a custom colormap
+        cmap = ListedColormap(colors)
+        plt.imshow(np.flip(np.rot90(img, k=-1),axis=1), cmap = cmap, aspect="auto", origin="lower", extent=[0, 1, 0, 2])
+        annni.set_layout('Classification')
         plt.show()
 
-    return accuracy
+        for i, label in enumerate(['Paramagnetic', 'Ferromagnetic', 'Antiphase', 'FloatingPhase']):
+            img = p_pred[:, i].reshape(-1, self.side)
+            plt.figure(figsize=(4.5,4))
+            plt.imshow(np.flip(np.rot90(img, k=-1),axis=1), cmap = "viridis", aspect="auto", origin="lower", extent=[0, 1, 0, 2])
+            annni.set_layout(label)
+            plt.colorbar()
+            plt.show()
+
+        return p_pred
