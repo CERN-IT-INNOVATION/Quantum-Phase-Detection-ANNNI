@@ -1,393 +1,188 @@
-""" This module implements base circuit layouts for all the models used"""
-import pennylane as qml
-from pennylane import numpy as np
-
 from typing import Tuple, List
-from numbers import Number
+import pennylane as qml
+import numpy as np
 
-##############
-
-
-def wall_gate(
-    active_wires: List[int],
-    gate: qml.operation.Operator,
-    params: List[Number] = [],
-    index: int = 0,
-    samerot: bool = False,
-) -> int:
+def ID9(n_qubit : int, p_v: np.ndarray, **kwargs) -> int:
     """
-    Apply rotations for all the wires (active_wires)
+    Adapted ansatz from the paper:
+    Expressibility and entangling capability of parameterized quantum circuits for 
+    hybrid quantum-classical algorithms (https://arxiv.org/abs/1905.10876
     
     Parameters
     ----------
-    active_wires : np.ndarray
-        Array of the wires to apply the rotations to
-    gate : qml.ops.qubit.parametric_ops
-        Qubit operator to apply
-    params : list
-        List of parameters of the whole circuit
-    index : int
-        Starting index for this block of operators
-    samerot : bool
-        if True -> The rotations are not independet of each other but the same
-    
+    n_qubit : int
+        Number of qubit of the ansatz
+    p_v : np.ndarray
+        Array of the trainable parameters of the VQE
+
     Returns
     -------
     int
-        Updated index value
+        Number of trainable parameters
     """
-    if len(params) > 0:
-        if not samerot:
-            for i, spin in enumerate(active_wires):
-                gate(params[index + i], wires=int(spin))
-            return index + i + 1
-        else:
-            for spin in active_wires:
-                gate(params[index], wires=int(spin))
-            return index + 1
-    else:
-        for spin in active_wires:
-            gate(wires=int(spin))
+    def block(n_qubit: int, p_v: np.ndarray, index: int):
+        for qubit in range(n_qubit):
+            qml.Hadamard(wires=[qubit])
+        for qubit_c, qubit_t in zip(range(n_qubit), range(n_qubit)[1:]):
+            qml.CNOT(wires=[qubit_c, qubit_t])
+        for qubit in range(n_qubit):
+            qml.RY(p_v[index], wires=[qubit])
+            index += 1
+
         return index
 
+    n_iteration = kwargs.get('n_iteration', 1)
 
-def wall_cgate_serial(
-    active_wires: List[int],
-    cgate: qml.operation.Operator,
-    params: List[Number] = [],
-    index: int = 0,
-    going_down: bool = True,
-) -> int:
+    index_v = 0
+    for depth in range(n_iteration):
+        index_v = block(n_qubit, p_v, index_v)
+        qml.Barrier()
+
+    return index_v
+
+def anomaly(n_qubit, p_p) -> Tuple[int, List[int]]:
     """
-    Apply drop-down controlled rotations for all the wires (active_wires)
-    
-    Parameters
-    ----------
-    active_wires : np.ndarray
-        Array of the wires to apply the rotations to
-    cgate : Pennylane gate (parametrized or not)
-        Qubit controlled operator to apply
-    params : list
-        List of parameters of the whole circuit
-    index : int
-        Starting index for this block of operators
-    going_down : bool
-        if True -> top - down, if False -> down - top
-    
     Returns
     -------
     int
-        Updated index value
-    """
-    if len(params) > 0:
-        for i, (spin, spin_next) in enumerate(zip(active_wires, active_wires[1:])):
-            if going_down:
-                cgate(params[index + i], wires=[int(spin), int(spin_next)])
-            else:
-                cgate(params[index + i], wires=[int(spin_next), int(spin)])
-        return index + i + 1
-    else:
-        for spin, spin_next in zip(active_wires, active_wires[1:]):
-            if going_down:
-                cgate(wires=[int(spin), int(spin_next)])
-            else:
-                cgate(wires=[int(spin_next), int(spin)])
-        return index
-
-
-def wall_cgate_all(
-    active_wires: List[int],
-    cgate: qml.operation.Operator,
-    params: List[Number] = [],
-    index: int = 0,
-    going_down: bool = True,
-) -> int:
-    """
-    Apply controlled rotations across all the wires (active_wires)
-    
-    Parameters
-    ----------
-    active_wires : np.ndarray
-        Array of the wires to apply the rotations to
-    cgate : Pennylane gate (parametrized or not)
-        Qubit controlled operator to apply
-    params : list
-        List of parameters of the whole circuit
-    index : int
-        Starting index for this block of operators
-    going_down : bool
-        if True -> top - down, if False -> down - top
-    
-    Returns
-    -------
-    int
-        Updated index value
-    """
-    if len(params) > 0:
-        i = 0
-        for k, spin in enumerate(active_wires):
-            for spin_next in active_wires[k + 1 :]:
-                if going_down:
-                    cgate(params[index + i], wires=[int(spin), int(spin_next)])
-                else:
-                    cgate(params[index + i], wires=[int(spin_next), int(spin)])
-                i += 1
-        return index + i + 1
-    else:
-        for k, spin in enumerate(active_wires):
-            for spin_next in active_wires[k + 1 :]:
-                if going_down:
-                    cgate(wires=[int(spin), int(spin_next)])
-                else:
-                    cgate(wires=[int(spin_next), int(spin)])
-        return index
-
-
-def wall_cgate_nextneighbour(
-    active_wires: List[int],
-    cgate: qml.operation.Operator,
-    params: List[Number] = [],
-    index: int = 0,
-    going_down: bool = True,
-) -> int:
-    """
-    Apply drop-down controlled rotations establishing next-neighbour entanglement
-    
-    Parameters
-    ----------
-    active_wires : np.ndarray
-        Array of the wires to apply the rotations to
-    cgate : Pennylane gate (parametrized or not)
-        Qubit controlled operator to apply
-    params : list
-        List of parameters of the whole circuit
-    index : int
-        Starting index for this block of operators
-    going_down : bool
-        if True -> top - down, if False -> down - top
-    
-    Returns
-    -------
-    int
-        Updated index value
-    """
-    if len(params) > 0:
-        for i, (spin, spin_next) in enumerate(zip(active_wires, active_wires[2:])):
-            if going_down:
-                cgate(params[index + i], wires=[int(spin), int(spin_next)])
-            else:
-                cgate(params[index + i], wires=[int(spin_next), int(spin)])
-        return index + i + 1
-    else:
-        for spin, spin_next in zip(active_wires, active_wires[2:]):
-            if going_down:
-                cgate(wires=[int(spin), int(spin_next)])
-            else:
-                cgate(wires=[int(spin_next), int(spin)])
-        return index
-
-
-def circuit_ID9(active_wires: List[int], params: List[Number], index: int = 0) -> int:
-    """
-    Basic block for VQE
-    
-    Parameters
-    ----------
-    active_wires : np.ndarray
-        Array of the wires to apply the rotations to
-    params : list
-        List of parameters of the whole circuit
-    index : int
-        Starting index for this block of operators
-        
-    Returns
-    -------
-    int
-        Updated index value
-    """
-    wall_gate(active_wires, qml.Hadamard)
-    wall_cgate_serial(active_wires, qml.CNOT)
-    index = wall_gate(active_wires, qml.RY, params, index)
-
-    return index
-
-
-def pooling(
-    active_wires: List[int],
-    qmlrot_func: qml.operation.Operator,
-    params: List[Number],
-    index: int = 0,
-) -> Tuple[int, List[int]]:
-    """
-    Pooling block for the QCNN
-
-    Parameters
-    ----------
-    active_wires : np.ndarray
-        Array of wires that are not measured during a previous pooling
-    qmlrot_func : function
-        Pennylane Gate function to apply
-    params: np.ndarray
-        Array of parameters/rotation for the circuit
-    index: int
-        Index from where to pick the elements from the params array
-
-    Returns
-    -------
-    int
-        Updated starting index of params array for further rotations
+        Total number of parameters needed to build this circuit
     np.ndarray
-        Updated array of active wires (not measured)
+        Array of the trainable parameters of the Anomaly Detection model
     """
-    isodd = True
-    if len(active_wires) % 2 == 0:
-        isodd = False
-    for wire_meas, wire_next in zip(active_wires[0::2], active_wires[1::2]):
-        m_0 = qml.measure(int(wire_meas))
-        qml.cond(m_0 == 0, qmlrot_func)(params[index], wires=int(wire_next))
-        qml.cond(m_0 == 1, qmlrot_func)(params[index + 1], wires=int(wire_next))
-        index = index + 2
 
-        # Removing measured wires from active_wires:
-        active_wires = np.delete(active_wires, np.where(active_wires == wire_meas))
+    def block(wires: List[int], wires_trash: List[int], shift: int = 0):
+        # Connection between trash wires
+        trash_uniques = []
+        for wire in wires_trash:
+            wire_target = wire + 1 + shift
 
-    # ---- > If the number of wires is odd, the last wires is not pooled
-    #        so we apply a gate
-    if isodd:
-        qmlrot_func(params[index], wires=int(active_wires[-1]))
-        index = index + 1
+            if wire_target > wires_trash[-1]:
+                wire_target = wires_trash[0] + wire_target - wires_trash[-1] - 1
+            if wire_target == wire:
+                wire_target += 1
+            if wire_target > wires_trash[-1]:
+                wire_target = wires_trash[0] + wire_target - wires_trash[-1] - 1
 
-    return index, active_wires
+            if [wire_target, wire] not in trash_uniques:
+                qml.CZ(wires=[int(wire), int(wire_target)])
+                trash_uniques.append([wire, wire_target])
 
+        # Connections wires -> trash_wires
+        for idx, wire in enumerate(wires):
+            trash_idx = idx + shift
 
-def convolution(active_wires: List[int], params: List[Number], index: int = 0) -> int:
+            while trash_idx > len(wires_trash) - 1:
+                trash_idx = trash_idx - len(wires_trash)
+
+            qml.CNOT(wires=[int(wire), int(wires_trash[trash_idx])])
+    
+    def wall(p_wire, rot_fun, p_p, index):
+        for wire in p_wire:
+            rot_fun(p_p[index], wires=int(wire))
+            index += 1
+        return index
+    
+    depth = 3
+
+    # Number of wires that will not be measured
+    n_trashwire = n_qubit // 2
+
+    # Constructing the array for the measured qubits (from the middle part)
+    p_trashwire = np.arange(n_trashwire // 2, n_trashwire // 2 + n_trashwire)
+
+    p_nontrashwire = np.setdiff1d(np.arange(n_qubit), p_trashwire)
+
+    # Index of the parameter vector
+    index = 0
+
+    index = wall(np.arange(n_qubit), qml.RY, p_p, index)
+    
+    for shift in range(depth):
+        block(p_nontrashwire, p_trashwire, shift)
+        qml.Barrier()
+        p_wire = np.arange(n_qubit) if shift < depth - 1 else p_trashwire
+        index = wall(p_wire, qml.RY, p_p, index)
+        # index = wall(p_wire, qml.RX, p_p, index)
+
+    # Return the number of parameters
+    return index, p_trashwire
+
+def qcnn(n_qubit, p_p) -> Tuple[int, List[int]]:
     """
-    Convolution block for the QCNN
-
-    Parameters
-    ----------
-    active_wires : np.ndarray
-        Array of wires that are not measured during a previous pooling
-    params: np.ndarray
-        Array of parameters/rotation for the circuit
-    index: int
-        Index from where to pick the elements from the params array
-
     Returns
     -------
     int
-        Updated starting index of params array for further rotations
+        Total number of parameters needed to build this circuit
+    np.ndarray
+        Array of the trainable parameters of the QCNN model
     """
-    if len(active_wires) > 1:
-        # Rotation Groups 2
-        for wire1, wire2 in zip(active_wires[0::2], active_wires[1::2]):
-            qml.RX(params[index], wires=int(wire1))
-            qml.RX(params[index], wires=int(wire2))
+    
+    def wall(p_wire, rot_fun, p_p, index):
+        for wire in p_wire:
+            rot_fun(p_p[index], wires=int(wire))
             index += 1
-
-        if len(active_wires) % 2 != 0:
-            qml.RX(params[index], wires=int(active_wires[-1]))
+        return index
+    
+    def conv(p_wire, p_p, index):
+        """Apply convolution layer over groups of 2 or 4 wires."""
+        p_group = []
+        if len(p_wire) % 4 == 0:
+            p_group = p_wire.reshape(-1, 4)
+        elif len(p_wire) % 2 == 0:
+            p_group = p_wire.reshape(-1, 2)
+        else:
+            p_group = p_wire[:-1].reshape(-1, 2)
+            qml.RY(p_p[index], wires=int(p_wire[-1]))
             index += 1
+            
+        for p_wire_group in p_group:
+            for wire1, wire2 in zip(p_wire_group[0::1], p_wire_group[1::1]):
+                qml.CNOT(wires=[int(wire1), int(wire2)])
+            for wire in p_wire_group:
+                qml.RY(p_p[index], wires=int(wire))
+                index += 1
+            
+        return index
 
-        # CNOTS Groups 1
-        for wire1, wire2 in zip(active_wires[1::2], active_wires[2::2]):
-            qml.CNOT(wires=[int(wire1), int(wire2)])
+    def pool(p_wire, p_p, index):
+        is_even = len(p_wire) % 2 == 0
 
-        qml.Barrier()
+        for wire_meas, wire_next in zip(p_wire[0::2], p_wire[1::2]):
+            m_0 = qml.measure(int(wire_meas))
+            qml.cond(m_0 == 0, qml.RX)(p_p[index],     wires=int(wire_next))
+            qml.cond(m_0 == 1, qml.RX)(p_p[index + 1], wires=int(wire_next))
+            index = index + 2
 
-        # Rotation Groups 1
-        qml.RX(params[index], wires=int(active_wires[0]))
-        index += 1
-        for wire1, wire2 in zip(active_wires[1::2], active_wires[2::2]):
-            qml.RX(params[index], wires=int(wire1))
-            qml.RX(params[index], wires=int(wire2))
-            index += 1
+            # Removing measured wires from active_wires:
+            p_wire = np.delete(p_wire, np.where(p_wire == wire_meas))
 
-        if len(active_wires) % 2 == 0:
-            qml.RX(params[index], wires=int(active_wires[-1]))
-            index += 1
+        # ---- > If the number of wires is odd, the last wires is not pooled
+        #        so we apply a gate
+        if not is_even:
+            qml.RX(p_p[index], wires=int(p_wire[-1]))
+            index = index + 1
 
-        # CNOTS Groups 2
-        for wire1, wire2 in zip(active_wires[0::2], active_wires[1::2]):
-            qml.CNOT(wires=[int(wire1), int(wire2)])
+        return index, p_wire
 
-        index = wall_gate(active_wires, qml.RY, params, index)
+    # Wires that are not measured (through pooling)
+    p_activewire = np.arange(n_qubit)
 
-    return index
+    # Index of the parameter vector
+    index = 0
+    output_dim = 2
 
+    index = wall(p_activewire, qml.RY, p_p, index)
 
-def encoder_block(wires: List[int], wires_trash: List[int], shift: int = 0):
-    """
-    Applies CX between a wire and a trash wire for each
-    wire/trashwire
-
-    Parameters
-    ----------
-    wires : np.ndarray
-        Array of the indexes of non-trash qubits
-    wires_trash : np.ndarray
-        Array of the indexes of trash qubits (np.1dsetdiff(np.arange(N),wires))
-    shift : int
-        Shift value for connections between wires and trash wires
-    """
-    # Connection between trash wires
-    trash_uniques = []
-    for wire in wires_trash:
-        wire_target = wire + 1 + shift
-
-        if wire_target > wires_trash[-1]:
-            wire_target = wires_trash[0] + wire_target - wires_trash[-1] - 1
-        if wire_target == wire:
-            wire_target += 1
-        if wire_target > wires_trash[-1]:
-            wire_target = wires_trash[0] + wire_target - wires_trash[-1] - 1
-
-        if not [wire_target, wire] in trash_uniques:
-            qml.CZ(wires=[int(wire), int(wire_target)])
-            trash_uniques.append([wire, wire_target])
-
-    # Connections wires -> trash_wires
-    for idx, wire in enumerate(wires):
-        trash_idx = idx + shift
-
-        while trash_idx > len(wires_trash) - 1:
-            trash_idx = trash_idx - len(wires_trash)
-
-        qml.CNOT(wires=[int(wire), int(wires_trash[trash_idx])])
-
-
-def encoder_circuit(
-    wires: List[int],
-    wires_trash: List[int],
-    active_wires: List[int],
-    params: List[Number],
-    index: int = 0,
-) -> int:
-    """
-    Encoder circuit for encoder and autoencoder
-
-    Parameters
-    ----------
-    wires : np.ndarray
-        Array of the indexes of non-trash qubits
-    wires_trash : np.ndarray
-        Array of the indexes of trash qubits (np.1dsetdiff(np.arange(N),wires))
-    active_wires : np.ndarray
-        wires U wires_trash
-    params: np.ndarray
-        Array of parameters/rotation for the circuit
-    index: int
-        Index from where to pick the elements from the params array
+    while len(p_activewire) > output_dim:
+        # Convolute
+        index = conv(p_activewire, p_p, index)
+        # Pool
+        index, p_activewire = pool(p_activewire, p_p, index)
         
-    Returns
-    -------
-    int
-        Updated index value
-    """
-    index = wall_gate(active_wires, qml.RY, params, index=index)
-    for shift in range(3):
-        encoder_block(wires, wires_trash, shift)
         qml.Barrier()
-        index = wall_gate(active_wires, qml.RZ, params, index=index)
 
-    return index
+    # index = conv(p_activewire, p_p, index)
+    index = wall(p_activewire, qml.RY, p_p, index)
+
+    # Return the number of parameters
+    return index, p_activewire
