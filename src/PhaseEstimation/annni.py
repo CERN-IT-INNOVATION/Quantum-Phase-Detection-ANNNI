@@ -150,33 +150,26 @@ class Annni():
         # wavefunction can be used as input bypassing the VQE procedure
         if self.n_spin <= n_spin_simulable:
             self.energy, self.psi = self.get_energy_psi()
-        
-    def get_H(self):
-        # Interaction between spins (neighbouring):
-        H = np.array(-1, requires_grad = False) * (qml.PauliX(0) @ qml.PauliX(1))
-        for i in range(1, self.n_spin - 1):
-            H = H + np.array(-1, requires_grad = False) * (qml.PauliX(i) @ qml.PauliX(i + 1))
 
-        # Interaction of spins with magnetic field
-        if self.h != 0:
-            for i in range(0, self.n_spin):
-                H = H - np.array(self.h, requires_grad = False) * qml.PauliZ(i)
+
+    def get_H(self):
+        """Construction function the ANNNI Hamiltonian (J=1)"""
+
+        # Interaction between spins (neighbouring):
+        H = -1 * (qml.PauliX(0) @ qml.PauliX(1))
+        for i in range(1, self.n_spin - 1):
+            H = H  - (qml.PauliX(i) @ qml.PauliX(i + 1))
 
         # Interaction between spins (next-neighbouring):
-        if self.k != 0:
-            for i in range(0, self.n_spin - 2):
-                H = H + np.array(self.k, requires_grad = False) * (qml.PauliX(i) @ qml.PauliX(i + 2))
+        for i in range(0, self.n_spin - 2):
+            H = H + self.k * (qml.PauliX(i) @ qml.PauliX(i + 2))
 
-        # If ring == True, the 'chain' needs to be closed
-        if self.ring:
-            # Nearest interaction between last spin and first spin -particles
-            H = H + np.array(-1, requires_grad = False) * (qml.PauliX(self.n_spin - 1) @ qml.PauliX(0))
-            # Next nearest interactions:
-            if self.k != 0:
-                H = H + np.array(self.k, requires_grad = False) * (qml.PauliX(self.n_spin - 2) @ qml.PauliX(0))
-                H = H + np.array(self.k, requires_grad = False) * (qml.PauliX(self.n_spin - 1) @ qml.PauliX(1))
+        # Interaction of the spins with the magnetic field
+        for i in range(0, self.n_spin):
+            H = H - self.h * qml.PauliZ(i)
 
         return H
+
     
     def get_phase(self):
         # 0 -> Ferromagnetic

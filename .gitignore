@@ -135,6 +135,7 @@ dmypy.json
 other/
 demo.ipynb
 dummy.ipynb
+other.ipynb
 # environment folder
 qua/ 
 # Documentation
