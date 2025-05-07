@@ -7,7 +7,6 @@ The module generates all the MPS for the ANNNI model with the given parameters a
 
 import argparse 
 import os
-import importlib
 
 parser = argparse.ArgumentParser()
 parser.add_argument("-L", type=int, default=8, help="Number of spins")
@@ -20,9 +19,7 @@ args = parser.parse_args()
 if not os.path.exists(args.path):
     os.makedirs(args.path)
 
-im_script_path = importlib.resources.files("PhaseEstimation") / "dmrg"
-with importlib.resources.as_file(im_script_path) as im_script_path:
-    script_path = f"{im_script_path}.py"
+script_path = "/home/samonaco/Quantum-Phase-Detection-ANNNI/src/PhaseEstimation/dmrg.py"
     
 filename = f"{args.path}ANNNI_L{args.L}_X{args.chi}.pkl"
 if os.path.exists(filename):
