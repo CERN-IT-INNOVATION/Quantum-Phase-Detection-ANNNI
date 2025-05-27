@@ -97,6 +97,7 @@ class Qcnn:
                 self.index_map.append((k, h))
                 if self.vqeclass is None:
                     H = annni.Annni(self.n_qubit, k, h, ring=True)
+
                     p_state.append(H.psi)
                     p_Y.append(jnp.eye(4)[H.phase])
                 else:

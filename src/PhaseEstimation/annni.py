@@ -151,7 +151,6 @@ class Annni():
         if self.n_spin <= n_spin_simulable:
             self.energy, self.psi = self.get_energy_psi()
 
-
     def get_H(self):
         """Construction function the ANNNI Hamiltonian (J=1)"""
 
@@ -169,7 +168,6 @@ class Annni():
             H = H - self.h * qml.PauliZ(i)
 
         return H
-
     
     def get_phase(self):
         # 0 -> Ferromagnetic
